@@ -8,6 +8,8 @@ import { mediaRouter, fontsRouter } from './media.js';
 import { startRender, getJob, listJobs, cancelJob, subscribe, type RenderFormat } from './render.js';
 import { FFMPEG } from './ffmpegPath.js';
 import * as docs from './documents.js';
+import { getSettings, saveSettings } from './settings.js';
+import { existsSync as fsExists } from 'node:fs';
 
 const PORT = Number(process.env.INTROMATE_PORT ?? 4040);
 // The page the renderer screenshots. Dev = the Vite server; once the client is built the
@@ -74,6 +76,15 @@ app.put('/api/doc/:id', (q, s) => {
 });
 
 app.delete('/api/doc/:id', (q, s) => s.json({ ok: docs.deleteDocument(q.params.id) }));
+
+// ── Settings (general, keys, media folder) ────────────────────────────────────
+app.get('/api/settings', (_q, s) => s.json(getSettings()));
+app.put('/api/settings', (q, s) => s.json(saveSettings(q.body ?? {})));
+// Validate a media-folder path before saving it, so the UI can warn on a bad path.
+app.get('/api/settings/check-folder', (q, s) => {
+  const p = String(q.query.path ?? '').trim();
+  s.json({ exists: !!p && fsExists(p) });
+});
 
 // ── Media + fonts ────────────────────────────────────────────────────────────
 app.use('/api/media', mediaRouter());

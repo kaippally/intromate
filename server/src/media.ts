@@ -6,6 +6,7 @@ import { readdirSync, existsSync, writeFileSync, readFileSync, mkdirSync } from 
 import { join, extname, basename, resolve } from 'node:path';
 import { MEDIA_DIR, SM_FONTS, SM_IMAGES, SM_AUDIO, SM_MUSIC, SM_VIDEOS, SM_CLIPS } from './paths.js';
 import { FFMPEG } from './ffmpegPath.js';
+import { getMediaFolder } from './settings.js';
 
 const IMAGE_RE = /\.(png|jpe?g|gif|webp|avif|svg)$/i;
 const AUDIO_RE = /\.(mp3|wav|m4a|aac|ogg|flac)$/i;
@@ -41,15 +42,25 @@ function storeItems(kind: 'image' | 'audio' | 'video'): MediaItem[] {
     scan(s.dir, s.re).map(f => ({ id: `${s.key}/${f}`, label: f, url: `/api/media/${s.key}/${encodeURIComponent(f)}`, store: s.label })));
 }
 
-export const listImages = () => [...localItems(IMAGE_RE), ...storeItems('image')];
-export const listAudio = () => [...localItems(AUDIO_RE), ...storeItems('audio')];
-export const listVideos = () => [...localItems(VIDEO_RE), ...storeItems('video')];
+// Files from the user-configured extra media folder (Settings → Media folder), if set. This is IN
+// ADDITION to the Studio Mate libraries, which are scanned by default via STORES.
+function userItems(re: RegExp): MediaItem[] {
+  const dir = getMediaFolder();
+  if (!dir) return [];
+  return scan(dir, re).map(f => ({ id: `user/${f}`, label: f, url: `/api/media/user/${encodeURIComponent(f)}`, store: 'my-folder' }));
+}
+
+export const listImages = () => [...localItems(IMAGE_RE), ...userItems(IMAGE_RE), ...storeItems('image')];
+export const listAudio = () => [...localItems(AUDIO_RE), ...userItems(AUDIO_RE), ...storeItems('audio')];
+export const listVideos = () => [...localItems(VIDEO_RE), ...userItems(VIDEO_RE), ...storeItems('video')];
 
 /** Resolve a project media url back to a file on disk (for the ffmpeg audio mux / thumbs / peaks). */
 export function resolveMediaFile(url: string): string | null {
   const clean = decodeURIComponent(url.split('?')[0]!);
   const local = /^\/api\/media\/file\/(.+)$/.exec(clean);
   if (local) { const p = join(MEDIA_DIR, basename(local[1]!)); return existsSync(p) ? p : null; }
+  const user = /^\/api\/media\/user\/(.+)$/.exec(clean);
+  if (user) { const dir = getMediaFolder(); const p = dir && join(dir, basename(user[1]!)); return p && existsSync(p) ? p : null; }
   for (const s of STORES) {
     const m = new RegExp(`^/api/media/${s.key}/(.+)$`).exec(clean);
     if (m) { const p = join(s.dir, basename(m[1]!)); return existsSync(p) ? p : null; }
@@ -145,6 +156,12 @@ export function mediaRouter(): Router {
 
   r.use('/file', express.static(MEDIA_DIR, { maxAge: '1h' }));
   for (const st of STORES) r.use(`/${st.key}`, express.static(st.dir, { maxAge: '1h' }));
+  // The user media folder is dynamic (changes with Settings), so resolve it per request.
+  r.use('/user', (req, res, next) => {
+    const dir = getMediaFolder();
+    if (!dir) return res.status(404).end();
+    express.static(dir, { maxAge: '1h' })(req, res, next);
+  });
 
   // Content-addressed upload — files on disk, never data: urls in the project.
   r.post('/upload', (q, s) => {

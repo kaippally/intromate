@@ -11,6 +11,7 @@ import { LibraryPanel } from './panels/LibraryPanel';
 import { TimelinePanel } from './panels/TimelinePanel';
 import { InspectorPanel } from './panels/InspectorPanel';
 import { ShortcutManager } from './ShortcutManager';
+import { SettingsPanel } from './SettingsPanel';
 import { useContextMenu, type MenuItem } from './ContextMenu';
 import { MediaPicker } from '../components/MediaPicker';
 import type { MediaItem } from '../types';
@@ -41,6 +42,7 @@ export default function FlashApp() {
   const [selLayer, setSelLayer] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [showKeys, setShowKeys] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [replaceReq, setReplaceReq] = useState<{ nodeId: string; kind: 'image' | 'video' } | null>(null);
   const [layout, setLayout] = useState<MosaicNode<PanelId>>(() => {
     try { return JSON.parse(localStorage.getItem(LAYOUT_KEY) || 'null') || DEFAULT_LAYOUT; } catch { return DEFAULT_LAYOUT; }
@@ -344,6 +346,7 @@ export default function FlashApp() {
 
         <div className="flex-1" />
         <button className="im-btn" onClick={() => setShowKeys(true)} title="Keyboard Shortcuts (Ctrl+/)">⌨ Shortcuts</button>
+        <button className="im-btn text-base leading-none px-1.5" onClick={() => setShowSettings(true)} title="Settings">⚙</button>
       </header>
 
       {/* Breadcrumb scope tabs */}
@@ -384,6 +387,7 @@ export default function FlashApp() {
 
       {ctx.node}
       {showKeys && <ShortcutManager map={map} onRebind={rebind} onResetOne={resetOne} onResetAll={resetAll} onClose={() => setShowKeys(false)} />}
+      {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} onOpenShortcuts={() => { setShowSettings(false); setShowKeys(true); }} />}
       {replaceReq && (
         <MediaPicker kind={replaceReq.kind} onClose={() => setReplaceReq(null)}
           onPick={item => { replaceNodeMedia(replaceReq.nodeId, item); setReplaceReq(null); }} />

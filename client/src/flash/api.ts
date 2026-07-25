@@ -16,4 +16,15 @@ export const saveDoc = (doc: FlashDoc) =>
   j<FlashDoc>(`/api/doc/${doc.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(doc) });
 export const deleteDoc = (id: string) => j<{ ok: boolean }>(`/api/doc/${id}`, { method: 'DELETE' });
 
+export interface AppSettings {
+  mediaFolder?: string;
+  defaultFps?: number; defaultWidth?: number; defaultHeight?: number;
+  autosave?: boolean;
+  keys?: Record<string, string>;
+}
+export const getSettings = () => j<AppSettings>('/api/settings');
+export const saveSettings = (patch: Partial<AppSettings>) =>
+  j<AppSettings>('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
+export const checkFolder = (path: string) => j<{ exists: boolean }>(`/api/settings/check-folder?path=${encodeURIComponent(path)}`);
+
 export type { FlashDoc };
