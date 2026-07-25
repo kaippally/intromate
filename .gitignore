@@ -1,0 +1,13 @@
+node_modules/
+dist/
+review/
+*.log
+
+# Local runtime data — recreated by the server on boot; not source
+data/flash.db
+data/flash.db-shm
+data/flash.db-wal
+data/projects/
+data/media/
+data/exports/
+data/frames/

@@ -1,0 +1,16 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "noEmit": true,
+    "allowJs": false,
+    "types": ["vite/client"],
+    "baseUrl": ".",
+    "paths": {
+      "@sm/*": ["../../StudioMate/client/src/*"],
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src"]
+}

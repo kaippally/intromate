@@ -1,0 +1,50 @@
+/* Dark theme for react-mosaic (its default CSS is light) + the Flash editor chrome. */
+
+.flash-mosaic .mosaic {
+  background: #020617;
+}
+.flash-mosaic .mosaic-window,
+.flash-mosaic .mosaic-preview {
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: none;
+}
+.flash-mosaic .mosaic-window .mosaic-window-toolbar {
+  background: #0f172a;
+  border-bottom: 1px solid #1e293b;
+  box-shadow: none;
+  height: 24px;
+  min-height: 24px;
+}
+.flash-mosaic .mosaic-window .mosaic-window-title {
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding-left: 8px;
+}
+.flash-mosaic .mosaic-window .mosaic-window-body {
+  background: #020617;
+}
+.flash-mosaic .mosaic-split {
+  background: transparent;
+}
+.flash-mosaic .mosaic-split:hover {
+  background: rgba(56, 189, 248, 0.3);
+}
+.flash-mosaic .mosaic-split .mosaic-split-line {
+  box-shadow: 0 0 0 1px #1e293b;
+}
+.flash-mosaic .mosaic-tile {
+  margin: 2px;
+}
+
+/* Shared control classes reused from IntroMate's editor look. */
+.im-btn { padding: 2px 6px; font-size: 11px; border-radius: 4px; border: 1px solid #334155; background: #1e293b; color: #cbd5e1; }
+.im-btn:hover { background: #334155; }
+.im-btn:disabled { opacity: 0.4; }
+.im-btn-primary { padding: 2px 6px; font-size: 11px; border-radius: 4px; border: 1px solid #0284c7; background: #0369a1; color: #e0f2fe; }
+.im-btn-primary:hover { background: #0284c7; }
+.im-input { width: 100%; padding: 2px 6px; font-size: 11px; border-radius: 4px; border: 1px solid #334155; background: #020617; color: #e2e8f0; }
+.im-input:focus { outline: none; border-color: #0284c7; }

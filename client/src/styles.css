@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; }
+
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color: #e2e8f0;
+}
+
+input[type='range'] { accent-color: #38bdf8; }
+
+.im-panel { @apply bg-slate-900 border border-slate-800 rounded-md; }
+.im-btn { @apply px-2 py-1 text-xs rounded border border-slate-700 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-slate-800; }
+.im-btn-primary { @apply px-2 py-1 text-xs rounded border border-sky-600 bg-sky-700 hover:bg-sky-600 disabled:opacity-40; }
+.im-input { @apply w-full px-2 py-1 text-xs rounded border border-slate-700 bg-slate-950 focus:outline-none focus:border-sky-600; }
+.im-label { @apply block text-[10px] uppercase tracking-wide text-slate-500 mb-1; }
