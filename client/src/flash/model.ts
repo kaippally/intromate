@@ -94,6 +94,8 @@ export interface Symbol {
   regX: number; regY: number; // registration point
   ord: number;
   layers: Layer[];
+  loopFrame?: number | null;      // playback boundary: when the playhead reaches this frame it
+  loopAction?: 'loop' | 'stop';   // loops back to 0 ('loop', default) or halts ('stop')
 }
 
 export interface Asset {

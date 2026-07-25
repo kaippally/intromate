@@ -116,3 +116,7 @@ CREATE INDEX IF NOT EXISTS asset_doc ON asset(document_id);
 for (const col of ['rot_x REAL NOT NULL DEFAULT 0', 'rot_y REAL NOT NULL DEFAULT 0', 'hold TEXT', 'z REAL NOT NULL DEFAULT 0']) {
   try { db.exec(`ALTER TABLE node ADD COLUMN ${col}`); } catch { /* already present */ }
 }
+// Per-symbol playback boundary: at loop_frame the playhead loops back to 0 or stops.
+for (const col of ['loop_frame INTEGER', 'loop_action TEXT']) {
+  try { db.exec(`ALTER TABLE symbol ADD COLUMN ${col}`); } catch { /* already present */ }
+}

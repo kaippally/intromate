@@ -64,6 +64,7 @@ export function readDocument(id: string): any | null {
     assets: assets.map(a => ({ id: a.id, name: a.name, kind: a.kind, url: a.url, meta: jparse(a.meta) })),
     symbols: symbols.map(s => ({
       id: s.id, name: s.name, type: s.type, regX: s.reg_x, regY: s.reg_y, ord: s.ord,
+      loopFrame: s.loop_frame ?? null, loopAction: s.loop_action ?? undefined,
       layers: layersBySymbol.get(s.id) ?? [],
     })),
   };
@@ -87,7 +88,7 @@ const writeTx = db.transaction((doc: any) => {
   db.prepare(`DELETE FROM symbol WHERE document_id = ?`).run(doc.id);
   db.prepare(`DELETE FROM asset WHERE document_id = ?`).run(doc.id);
 
-  const insSym = db.prepare(`INSERT INTO symbol (id,document_id,name,type,reg_x,reg_y,ord) VALUES (?,?,?,?,?,?,?)`);
+  const insSym = db.prepare(`INSERT INTO symbol (id,document_id,name,type,reg_x,reg_y,ord,loop_frame,loop_action) VALUES (?,?,?,?,?,?,?,?,?)`);
   const insLayer = db.prepare(`INSERT INTO layer (id,symbol_id,name,ord,kind,parent_id,locked,visible,outlined) VALUES (?,?,?,?,?,?,?,?,?)`);
   const insKf = db.prepare(`INSERT INTO keyframe (id,layer_id,frame,kind,tween,ease,label,script,sound_asset,sound_sync) VALUES (?,?,?,?,?,?,?,?,?,?)`);
   const insNode = db.prepare(`INSERT INTO node (id,keyframe_id,token,ord,kind,symbol_ref,asset_id,name,x,y,scale_x,scale_y,rotation,skew_x,skew_y,rot_x,rot_y,z,hold,alpha,blend,loop_mode,first_frame,props) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
@@ -96,7 +97,7 @@ const writeTx = db.transaction((doc: any) => {
   for (const a of doc.assets ?? []) insAsset.run(a.id, doc.id, a.name, a.kind, a.url, a.meta ? JSON.stringify(a.meta) : null);
 
   for (const s of doc.symbols ?? []) {
-    insSym.run(s.id, doc.id, s.name, s.type, s.regX ?? 0, s.regY ?? 0, s.ord ?? 0);
+    insSym.run(s.id, doc.id, s.name, s.type, s.regX ?? 0, s.regY ?? 0, s.ord ?? 0, s.loopFrame ?? null, s.loopAction ?? null);
     for (const l of s.layers ?? []) {
       insLayer.run(l.id, s.id, l.name, l.ord ?? 0, l.kind ?? 'normal', l.parentId ?? null, bool(l.locked), bool(l.visible ?? true), bool(l.outlined));
       for (const k of l.keyframes ?? []) {

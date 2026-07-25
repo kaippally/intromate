@@ -5,24 +5,50 @@ import { findSymbol, type FlashDoc, type Node } from './model';
 import { resolveSymbol } from './resolve';
 import { DisplayNode } from './DisplayNode';
 
+// Coalesce a drag's mousemove to at most one update per animation frame. A fast pointer fires far
+// more than 60 events/sec; committing each one rebuilds the whole document and re-renders every
+// panel, so the object trails the cursor with a heavy, "viscous" lag. rAF throttling collapses the
+// backlog to one render per frame and flushes the final position on release.
+function dragLoop(onMove: (ev: MouseEvent) => void) {
+  let raf = 0;
+  let last: MouseEvent | null = null;
+  const flush = () => { raf = 0; if (last) { onMove(last); last = null; } };
+  const move = (ev: MouseEvent) => { last = ev; if (!raf) raf = requestAnimationFrame(flush); };
+  const up = () => {
+    document.removeEventListener('mousemove', move);
+    document.removeEventListener('mouseup', up);
+    if (raf) cancelAnimationFrame(raf);
+    if (last) { onMove(last); last = null; }
+  };
+  document.addEventListener('mousemove', move);
+  document.addEventListener('mouseup', up);
+}
+
 // The Stage: resolves the editing symbol's display list at the current frame and draws it, scaled
 // to the panel. Everything outside the document rectangle is clipped, as Flash clips the Stage.
 // Selection handles + drag-to-move edit the selected node's transform directly on the canvas.
-export function FlashStage({ doc, symbolId, frame, boxW, boxH, selectedNodeId, onSelectNode, onMoveNode, onTransformNode, onEditInstance, editable = true }: {
+export function FlashStage({ doc, symbolId, frame, boxW, boxH, selectedNodeId, selectedNodeIds, onSelectNode, onToggleNode, onMoveNode, onTransformNode, onEditInstance, editable = true }: {
   doc: FlashDoc;
   symbolId: string;
   frame: number;
   boxW: number;
   boxH: number;
   selectedNodeId?: string | null;
+  selectedNodeIds?: string[];
   onSelectNode?: (id: string | null) => void;
+  onToggleNode?: (id: string) => void;
   onMoveNode?: (id: string, x: number, y: number) => void;
   onTransformNode?: (id: string, patch: Partial<Node>) => void;
   onEditInstance?: (symbolId: string) => void;
   editable?: boolean;
 }) {
   const sym = findSymbol(doc, symbolId);
-  const scale = Math.min(boxW / doc.width, boxH / doc.height) || 1;
+  const fitScale = Math.min(boxW / doc.width, boxH / doc.height) || 1;
+  const [viewZoom, setViewZoom] = useState(1);
+  const scale = fitScale * viewZoom;                     // effective on-screen scale (fit × Ctrl-wheel zoom)
+  const viewZoomRef = useRef(viewZoom); viewZoomRef.current = viewZoom;
+  const pendingAnchor = useRef<{ fx: number; fy: number; clientX: number; clientY: number } | null>(null);
+  useEffect(() => { setViewZoom(1); }, [symbolId]);      // reset zoom when a different symbol opens
   const list = useMemo(() => (sym ? resolveSymbol(doc, sym, frame) : []), [doc, sym, frame]);
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -49,6 +75,22 @@ export function FlashStage({ doc, symbolId, frame, boxW, boxH, selectedNodeId, o
     setSelRect({ left: nr.left - fr.left, top: nr.top - fr.top, width: nr.width, height: nr.height });
   }, [selected, selectedNodeId, frame, doc, scale, boxW, boxH]);
 
+  // Extra (Ctrl-selected) objects get a plain outline; the primary one keeps the full transform box.
+  const [multiRects, setMultiRects] = useState<{ left: number; top: number; width: number; height: number }[]>([]);
+  useLayoutEffect(() => {
+    const wrap = wrapRef.current;
+    const ids = (selectedNodeIds ?? []).filter(id => id !== selectedNodeId);
+    const frameEl = wrap?.querySelector('.im-stage-frame') as HTMLElement | null;
+    if (!wrap || !frameEl || !ids.length) { setMultiRects([]); return; }
+    const fr = frameEl.getBoundingClientRect();
+    const rects: { left: number; top: number; width: number; height: number }[] = [];
+    for (const id of ids) {
+      const el = frameEl.querySelector(`[data-node-id="${id}"]`) as HTMLElement | null;
+      if (el) { const nr = el.getBoundingClientRect(); rects.push({ left: nr.left - fr.left, top: nr.top - fr.top, width: nr.width, height: nr.height }); }
+    }
+    setMultiRects(rects);
+  }, [selectedNodeIds, selectedNodeId, frame, doc, scale, boxW, boxH]);
+
   // Top-level (directly-selectable) node ids at this frame, and a quick lookup of the source Node.
   const topIds = useMemo(() => new Set(list.map(n => n.srcId).filter(Boolean) as string[]), [list]);
   const nodeById = (id: string): Node | null => {
@@ -73,7 +115,10 @@ export function FlashStage({ doc, symbolId, frame, boxW, boxH, selectedNodeId, o
   function stageMouseDown(e: React.MouseEvent) {
     if (!editable) return;
     const id = hitTopId(e.target);
-    if (id) { const n = nodeById(id); if (n) return startDrag(e, n); }
+    if (id) {
+      if (e.ctrlKey || e.metaKey) { onToggleNode?.(id); return; }   // Ctrl+click = add/remove from selection
+      const n = nodeById(id); if (n) return startDrag(e, n);
+    }
     onSelectNode?.(null);
   }
   // Double-click an instance on the canvas → open that object's own timeline (dive in).
@@ -89,21 +134,31 @@ export function FlashStage({ doc, symbolId, frame, boxW, boxH, selectedNodeId, o
     e.stopPropagation();
     onSelectNode?.(node.id);
     const x0 = e.clientX, y0 = e.clientY, nx = node.x, ny = node.y;
-    let moved = false;
-    const move = (ev: MouseEvent) => { moved = true; onMoveNode(node.id, Math.round(nx + (ev.clientX - x0) / scale), Math.round(ny + (ev.clientY - y0) / scale)); };
-    const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); void moved; };
-    document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+    dragLoop(ev => onMoveNode(node.id, Math.round(nx + (ev.clientX - x0) / scale), Math.round(ny + (ev.clientY - y0) / scale)));
   }
 
-  // Shift+wheel = uniform SCALE (Z position); Ctrl+wheel = Z depth (perspective dolly). Attached
-  // natively (non-passive) so Ctrl+wheel doesn't trigger the browser's page zoom.
+  // Ctrl/⌘+wheel = zoom the CANVAS, anchored so the point under the cursor stays put (never the
+  // browser's page zoom). Shift+wheel = uniformly SCALE the selected node; Alt+wheel = its Z depth.
+  // Attached natively (non-passive) so preventDefault actually suppresses the browser gesture.
   const selRef = useRef(selected); selRef.current = selected;
   useEffect(() => {
     const el = wrapRef.current;
-    if (!el || !editable || !onTransformNode) return;
+    if (!el) return;
     const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const frameEl = el.querySelector('.im-stage-frame') as HTMLElement | null;
+        if (!frameEl) return;
+        const prev = viewZoomRef.current;
+        const next = Math.min(8, Math.max(0.2, +(prev * (e.deltaY < 0 ? 1.1 : 1 / 1.1)).toFixed(4)));
+        if (next === prev) return;
+        const fr = frameEl.getBoundingClientRect();
+        pendingAnchor.current = { fx: (e.clientX - fr.left) / (fr.width || 1), fy: (e.clientY - fr.top) / (fr.height || 1), clientX: e.clientX, clientY: e.clientY };
+        setViewZoom(next);
+        return;
+      }
       const n = selRef.current;
-      if (!n || (!e.shiftKey && !e.ctrlKey && !e.metaKey)) return;
+      if (!n || (!e.shiftKey && !e.altKey) || !editable || !onTransformNode) return;
       e.preventDefault();
       if (e.shiftKey) {
         const f = e.deltaY < 0 ? 1.05 : 1 / 1.05;
@@ -116,18 +171,34 @@ export function FlashStage({ doc, symbolId, frame, boxW, boxH, selectedNodeId, o
     return () => el.removeEventListener('wheel', onWheel);
   }, [editable, onTransformNode]);
 
+  // After a Ctrl-wheel zoom re-lays-out the frame, scroll so the same fractional point on the stage
+  // lands back under the cursor — a stable, cursor-anchored zoom regardless of the flex centering.
+  useLayoutEffect(() => {
+    const a = pendingAnchor.current, el = wrapRef.current;
+    if (!a || !el) return;
+    pendingAnchor.current = null;
+    const frameEl = el.querySelector('.im-stage-frame') as HTMLElement | null;
+    if (!frameEl) return;
+    const fr = frameEl.getBoundingClientRect();
+    el.scrollLeft += fr.left + a.fx * fr.width - a.clientX;
+    el.scrollTop += fr.top + a.fy * fr.height - a.clientY;
+  }, [viewZoom]);
+
   const stage: CSSProperties = {
     position: 'absolute', top: 0, left: 0, width: doc.width, height: doc.height,
     transform: `scale(${scale})`, transformOrigin: '0 0', background: doc.bg, overflow: 'hidden',
   };
 
   return (
-    <div ref={wrapRef} className="relative w-full h-full flex items-center justify-center bg-[#0b1120] overflow-hidden"
+    <div ref={wrapRef} className="relative w-full h-full flex overflow-auto bg-[#0b1120]"
       onMouseDown={stageMouseDown} onDoubleClick={stageDoubleClick}>
-      <div className="im-stage-frame relative shadow-2xl shadow-black/60 ring-1 ring-slate-700" style={{ width: doc.width * scale, height: doc.height * scale }}>
+      <div className="im-stage-frame relative m-auto shrink-0 shadow-2xl shadow-black/60 ring-1 ring-slate-700" style={{ width: doc.width * scale, height: doc.height * scale }}>
         <div style={stage}>
           {list.map(n => <DisplayNode key={n.key} node={n} />)}
         </div>
+        {editable && multiRects.map((r, i) => (
+          <div key={i} className="absolute border border-sky-400/70 pointer-events-none" style={{ left: r.left, top: r.top, width: r.width, height: r.height }} />
+        ))}
         {editable && selected && selRect && onTransformNode && (
           <TransformControls node={selected} rect={selRect} scale={scale}
             onTransform={p => onTransformNode(selected.id, p)}
@@ -166,8 +237,7 @@ function TransformControls({ node, rect, scale, onTransform, onMove }: { node: N
     if (e.ctrlKey || e.metaKey) return perspective(e);
     const x0 = e.clientX, y0 = e.clientY, nx = node.x, ny = node.y;
     const move = (ev: MouseEvent) => onMove(Math.round(nx + (ev.clientX - x0) / scale), Math.round(ny + (ev.clientY - y0) / scale));
-    const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); };
-    document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+    dragLoop(move);
   }
 
   function resize(handleId: string, e: React.MouseEvent) {
@@ -193,8 +263,7 @@ function TransformControls({ node, rect, scale, onTransform, onMove }: { node: N
       if (hy < 0) patch.y = Math.round(bottomY - b.h * nsy);  // dragging top  → pin bottom edge
       onTransform(patch);
     };
-    const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); };
-    document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+    dragLoop(move);
   }
 
   function rotate(e: React.MouseEvent) {
@@ -205,8 +274,7 @@ function TransformControls({ node, rect, scale, onTransform, onMove }: { node: N
       const ang = Math.atan2(ev.clientY - frameRect.top - cy, ev.clientX - frameRect.left - cx) * 180 / Math.PI + 90;
       onTransform({ rotation: Math.round(ang) });
     };
-    const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); };
-    document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+    dragLoop(move);
   }
 
   function perspective(e: React.MouseEvent) {
@@ -217,8 +285,7 @@ function TransformControls({ node, rect, scale, onTransform, onMove }: { node: N
       const { rotX, rotY } = tumbleRotation(rx0, ry0, ev.clientX - x0, ev.clientY - y0, 80, 1);
       onTransform({ rotX, rotY });
     };
-    const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); };
-    document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+    dragLoop(move);
   }
 
   return (

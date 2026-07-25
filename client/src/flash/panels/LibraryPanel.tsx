@@ -21,6 +21,7 @@ export function LibraryPanel({ doc, editingSymbolId, onNewSymbol, onEditSymbol, 
   onReplaceAsset: (assetId: string, item: MediaItem) => void;
 }) {
   const [picking, setPicking] = useState<null | 'image' | 'video' | 'audio'>(null);
+  const [importing, setImporting] = useState(false);
   const [replacing, setReplacing] = useState<string | null>(null);
   const [sel, setSel] = useState<string | null>(null);
 
@@ -36,7 +37,7 @@ export function LibraryPanel({ doc, editingSymbolId, onNewSymbol, onEditSymbol, 
       <div className="flex items-center gap-1 p-1.5 border-b border-slate-800">
         <span className="font-semibold text-sky-400 flex-1">Library</span>
         <button className="im-btn" onClick={onNewSymbol} title="New Symbol (Ctrl+F8)">+ Symbol</button>
-        <button className="im-btn" onClick={() => setPicking('image')} title="Import media (Ctrl+R)">Import</button>
+        <button className="im-btn" onClick={() => { setReplacing(null); setImporting(true); setPicking('image'); }} title="Import media (Ctrl+R)">Import</button>
       </div>
 
       {/* Symbols — as a containment TREE: a symbol expands to the symbols instanced inside it. */}
@@ -53,19 +54,20 @@ export function LibraryPanel({ doc, editingSymbolId, onNewSymbol, onEditSymbol, 
         {doc.assets.map(a => (
           <div key={a.id} className="group flex items-center gap-2 px-2 py-1 hover:bg-slate-900"
             title="Right-click to replace"
-            onContextMenu={e => { e.preventDefault(); setReplacing(a.id); setPicking(a.kind === 'audio' ? 'audio' : a.kind === 'video' ? 'video' : 'image'); }}>
+            onContextMenu={e => { e.preventDefault(); setImporting(false); setReplacing(a.id); setPicking(a.kind === 'audio' ? 'audio' : a.kind === 'video' ? 'video' : 'image'); }}>
             {a.kind === 'image' ? <img src={a.url} alt="" className="w-8 h-6 object-cover rounded-sm bg-slate-800" />
               : <span className="w-8 text-center">{a.kind === 'video' ? '🎥' : a.kind === 'audio' ? '🎵' : '🖼'}</span>}
             <span className="flex-1 truncate text-slate-300">{a.name}</span>
-            <button className="im-btn opacity-0 group-hover:opacity-100" onClick={() => { setReplacing(a.id); setPicking(a.kind === 'audio' ? 'audio' : a.kind === 'video' ? 'video' : 'image'); }} title="Replace media">Replace</button>
+            <button className="im-btn opacity-0 group-hover:opacity-100" onClick={() => { setImporting(false); setReplacing(a.id); setPicking(a.kind === 'audio' ? 'audio' : a.kind === 'video' ? 'video' : 'image'); }} title="Replace media">Replace</button>
             <button className="im-btn opacity-0 group-hover:opacity-100" onClick={() => onPlaceImage({ id: a.id, url: a.url, label: a.name, store: 'lib' } as any)}>Place</button>
           </div>
         ))}
       </div>
 
       {picking && (
-        <MediaPicker kind={picking} onClose={() => { setPicking(null); setReplacing(null); }}
-          onPick={item => { if (replacing) onReplaceAsset(replacing, item); else onPlaceImage(item); setPicking(null); setReplacing(null); }} />
+        <MediaPicker kind={picking} kinds={importing ? ['image', 'video'] : undefined}
+          onClose={() => { setPicking(null); setReplacing(null); setImporting(false); }}
+          onPick={item => { if (replacing) onReplaceAsset(replacing, item); else onPlaceImage(item); setPicking(null); setReplacing(null); setImporting(false); }} />
       )}
     </div>
   );

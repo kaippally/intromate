@@ -4,13 +4,20 @@ import { fileToDataUrl, listAudio, listImages, listVideos, thumbUrl, uploadMedia
 import { Waveform } from './Waveform';
 import type { MediaItem } from '../types';
 
-// Picks from the IntroMate media folder AND (read-only) from the Studio Mate image/audio
-// libraries, so an intro can use the logos and stingers the show already has.
-export function MediaPicker({ kind, onPick, onClose }: {
-  kind: 'image' | 'video' | 'audio';
+type Kind = 'image' | 'video' | 'audio';
+
+// Picks from the IntroMate media folder AND (read-only) from the Studio Mate image/audio/video
+// libraries, so an intro can use the logos, stingers and clips the show already has. Pass `kinds`
+// to make the dialog switchable between media types (the Library Import shows Image + Video tabs);
+// omit it and the dialog is locked to the single `kind` (a video slot only accepts videos, etc.).
+export function MediaPicker({ kind, kinds, onPick, onClose }: {
+  kind: Kind;
+  kinds?: Kind[];
   onPick: (item: MediaItem) => void;
   onClose: () => void;
 }) {
+  const tabs = kinds && kinds.length ? kinds : [kind];
+  const [k, setK] = useState<Kind>(tabs[0]!);
   const [items, setItems] = useState<MediaItem[]>([]);
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
@@ -34,10 +41,10 @@ export function MediaPicker({ kind, onPick, onClose }: {
   }
 
   const load = () => {
-    const fn = kind === 'image' ? listImages : kind === 'video' ? listVideos : listAudio;
+    const fn = k === 'image' ? listImages : k === 'video' ? listVideos : listAudio;
     fn().then(setItems).catch(() => setItems([]));
   };
-  useEffect(load, [kind]);
+  useEffect(load, [k]);
 
   async function upload(files: FileList | null) {
     if (!files?.length) return;
@@ -53,11 +60,18 @@ export function MediaPicker({ kind, onPick, onClose }: {
   return createPortal(
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center" style={{ zIndex: 9000 }}
       onClick={() => { previewRef.current?.pause(); onClose(); }}>
-      <div className={`im-panel ${kind === 'image' ? 'w-[720px]' : 'w-[880px]'} max-h-[80vh] flex flex-col`} onClick={e => e.stopPropagation()}>
+      <div className={`im-panel ${k === 'image' ? 'w-[720px]' : 'w-[880px]'} max-h-[80vh] flex flex-col`} onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-2 p-2 border-b border-slate-800">
-          <span className="text-sm font-semibold capitalize">{kind} library</span>
+          {tabs.length > 1
+            ? <div className="flex gap-1">
+                {tabs.map(t => (
+                  <button key={t} className={`im-btn capitalize ${t === k ? 'border-sky-500 text-sky-300' : ''}`}
+                    onClick={() => { setPlaying(null); previewRef.current?.pause(); setK(t); }}>{t}</button>
+                ))}
+              </div>
+            : <span className="text-sm font-semibold capitalize">{k} library</span>}
           <input className="im-input flex-1" placeholder="Filter…" value={q} onChange={e => setQ(e.target.value)} />
-          {kind === 'audio' && (
+          {k === 'audio' && (
             <label className="flex items-center gap-1 text-[10px] text-slate-500">
               Level
               <input type="range" min={0} max={1} step={0.05} value={auditionVol} className="w-20"
@@ -68,11 +82,11 @@ export function MediaPicker({ kind, onPick, onClose }: {
           <button className="im-btn" disabled={busy} onClick={() => fileRef.current?.click()}>{busy ? 'Uploading…' : 'Upload'}</button>
           <button className="im-btn" onClick={() => { previewRef.current?.pause(); onClose(); }}>Close</button>
           <input ref={fileRef} type="file" multiple hidden
-            accept={kind === 'image' ? 'image/*' : kind === 'video' ? 'video/*' : 'audio/*'}
+            accept={k === 'image' ? 'image/*' : k === 'video' ? 'video/*' : 'audio/*'}
             onChange={e => upload(e.target.files)} />
         </div>
         <div className="flex-1 overflow-auto p-2">
-          {kind === 'image' && (
+          {k === 'image' && (
             <div className="grid grid-cols-5 gap-2">
               {shown.map(i => (
                 <button key={i.url} className="border border-slate-800 rounded hover:border-sky-500 p-1" onClick={() => { onPick(i); onClose(); }}>
@@ -83,7 +97,7 @@ export function MediaPicker({ kind, onPick, onClose }: {
             </div>
           )}
 
-          {kind === 'video' && (
+          {k === 'video' && (
             <div className="grid grid-cols-4 gap-2">
               {shown.map(i => (
                 <button key={i.url} className="border border-slate-800 rounded hover:border-sky-500 p-1 text-left" onClick={() => { onPick(i); onClose(); }}>
@@ -95,7 +109,7 @@ export function MediaPicker({ kind, onPick, onClose }: {
             </div>
           )}
 
-          {kind === 'audio' && (
+          {k === 'audio' && (
             <div className="flex flex-col gap-0.5">
               {shown.map(i => (
                 <div key={i.url} className="flex items-center gap-2 px-2 py-1 hover:bg-slate-800 rounded">

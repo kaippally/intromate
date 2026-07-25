@@ -37,7 +37,10 @@ export default function FlashApp() {
   const [docs, setDocs] = useState<api.DocMeta[]>([]);
   const [stack, setStack] = useState<string[]>([]);          // breadcrumb: symbol ids, last = editing
   const [frame, setFrame] = useState(0);
-  const [selNode, setSelNode] = useState<string | null>(null);
+  const [selNodes, setSelNodes] = useState<string[]>([]);
+  const selNode = selNodes[selNodes.length - 1] ?? null;   // the "primary" node (inspector / transform box)
+  const selectOne = useCallback((id: string | null) => setSelNodes(id ? [id] : []), []);
+  const toggleNode = useCallback((id: string) => setSelNodes(s => (s.includes(id) ? s.filter(x => x !== id) : [...s, id])), []);
   const [selKf, setSelKf] = useState<{ layerId: string; frame: number } | null>(null);
   const [selLayer, setSelLayer] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -68,6 +71,15 @@ export default function FlashApp() {
   useEffect(() => { if (doc) localStorage.setItem(LAST_DOC, doc.id); }, [doc?.id]);
   useEffect(() => { localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout)); }, [layout]);
 
+  // Ctrl/⌘+wheel is captured by the Stage and Timeline for zoom — never the browser's page zoom.
+  // A capture-phase, non-passive guard cancels the gesture everywhere in the app; region handlers
+  // (which don't stopPropagation) still run and do the actual zoom.
+  useEffect(() => {
+    const stop = (e: WheelEvent) => { if (e.ctrlKey || e.metaKey) e.preventDefault(); };
+    window.addEventListener('wheel', stop, { passive: false, capture: true });
+    return () => window.removeEventListener('wheel', stop, { capture: true } as EventListenerOptions);
+  }, []);
+
   // Autosave the whole tree (server flattens it into SQL).
   const saveT = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -78,14 +90,30 @@ export default function FlashApp() {
   }, [doc]);
 
   // ── Playback ─────────────────────────────────────────────────────────────────
+  const frameRef = useRef(frame); frameRef.current = frame;
   useEffect(() => {
     if (!playing || !doc || !editingSymbol) return;
-    const len = symbolLength(editingSymbol);
+    const len = Math.max(1, symbolLength(editingSymbol));
+    // A loop/stop point (set from the timeline right-click menu) overrides the natural end: the
+    // playhead either loops back to 0 or halts when it reaches that frame.
+    const stopAt = editingSymbol.loopFrame != null && editingSymbol.loopFrame > 0 ? editingSymbol.loopFrame : null;
+    const action = editingSymbol.loopAction ?? 'loop';
     const period = 1000 / (doc.fps || 24);
     let raf = 0, last = performance.now(), acc = 0;
     const tick = (now: number) => {
       acc += now - last; last = now;
-      while (acc >= period) { acc -= period; setFrame(f => (f + 1) % Math.max(1, len)); }
+      let steps = 0;
+      while (acc >= period) { acc -= period; steps++; }
+      if (steps) {
+        let nf = frameRef.current + steps;
+        if (stopAt != null && nf >= stopAt) {
+          if (action === 'stop') { frameRef.current = stopAt; setFrame(stopAt); setPlaying(false); return; }
+          nf = nf % stopAt;                     // loop back within [0, stopAt)
+        } else {
+          nf = nf % len;
+        }
+        frameRef.current = nf; setFrame(nf);
+      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -96,12 +124,12 @@ export default function FlashApp() {
   const editSymbol = useCallback((symId: string) => {
     if (!doc) return;
     setStack(symId === doc.rootSymbol ? [doc.rootSymbol] : [doc.rootSymbol, symId]);
-    setFrame(0); setSelNode(null); setSelKf(null);
+    setFrame(0); setSelNodes([]); setSelKf(null);
   }, [doc]);
   const diveInto = useCallback((symId: string) => {
-    setStack(s => [...s, symId]); setFrame(0); setSelNode(null); setSelKf(null);
+    setStack(s => [...s, symId]); setFrame(0); setSelNodes([]); setSelKf(null);
   }, []);
-  const gotoCrumb = (i: number) => { setStack(s => s.slice(0, i + 1)); setFrame(0); setSelNode(null); setSelKf(null); };
+  const gotoCrumb = (i: number) => { setStack(s => s.slice(0, i + 1)); setFrame(0); setSelNodes([]); setSelKf(null); };
 
   // The layer commands target: the selected layer, else the top layer.
   const targetLayerId = useMemo(() => selLayer ?? (editingSymbol ? [...editingSymbol.layers].sort((a, b) => b.ord - a.ord)[0]?.id ?? null : null), [selLayer, editingSymbol]);
@@ -143,9 +171,9 @@ export default function FlashApp() {
     'edit.duplicate': () => {
       if (!selNode) return;
       const r = M.duplicateNode(doc, editingSymbolId, selNode, false); // copy onto its own new layer
-      if (r.nodeId) { commit(() => r.doc); setSelNode(r.nodeId); setSelLayer(r.layerId); }
+      if (r.nodeId) { commit(() => r.doc); setSelNodes([r.nodeId]); setSelLayer(r.layerId); }
     },
-    'edit.delete': () => { if (selNode) { mut(d => M.deleteNode(d, editingSymbolId, selNode)); setSelNode(null); } },
+    'edit.delete': () => { if (selNodes.length) { const ids = selNodes; mut(d => ids.reduce((dd, id) => M.deleteNode(dd, editingSymbolId, id), d)); setSelNodes([]); } },
 
     'play.toggle': () => setPlaying(p => !p),
     'play.stop': () => { setPlaying(false); setFrame(0); },
@@ -169,22 +197,22 @@ export default function FlashApp() {
     'obj.newTimeline': () => {
       if (!targetLayerId) return;
       const r = M.newNestedTimeline(doc, editingSymbolId, targetLayerId, frame);
-      commit(() => r.doc); setSelNode(r.nodeId); diveInto(r.symbolId);
+      commit(() => r.doc); setSelNodes([r.nodeId]); diveInto(r.symbolId);
     },
     'obj.convert': () => {
       if (!targetLayerId || !selNode) return;
       const r = M.selectionToTimeline(doc, editingSymbolId, targetLayerId, frame, [selNode]);
-      if (r) { commit(() => r.doc); setSelNode(r.nodeId); }
+      if (r) { commit(() => r.doc); setSelNodes([r.nodeId]); }
     },
 
     'lib.newSymbol': () => { const name = prompt('Symbol name', `Symbol ${doc.symbols.length}`); if (name) { const r = M.addSymbol(doc, name, 'movieclip'); commit(() => r.doc); editSymbol(r.id); } },
-    'lib.convert': () => { if (targetLayerId && selNode) { const r = M.selectionToTimeline(doc, editingSymbolId, targetLayerId, frame, [selNode]); if (r) { commit(() => r.doc); setSelNode(r.nodeId); } } },
+    'lib.convert': () => { if (targetLayerId && selNode) { const r = M.selectionToTimeline(doc, editingSymbolId, targetLayerId, frame, [selNode]); if (r) { commit(() => r.doc); setSelNodes([r.nodeId]); } } },
     'lib.import': () => {/* handled in Library panel button */},
     'lib.duplicate': () => { if (selectedNode?.symbolRef) { const r = M.duplicateSymbol(doc, selectedNode.symbolRef); commit(() => r.doc); } },
     'lib.edit': () => { if (selectedNode?.kind === 'instance' && selectedNode.symbolRef) diveInto(selectedNode.symbolRef); },
-    'lib.addText': () => { if (targetLayerId) { const r = M.addTextNode(doc, editingSymbolId, targetLayerId, frame); commit(() => r.doc); setSelNode(r.nodeId); } },
-    'lib.addRect': () => { if (targetLayerId) { const r = M.addShapeNode(doc, editingSymbolId, targetLayerId, frame, 'rect'); commit(() => r.doc); setSelNode(r.nodeId); } },
-    'lib.addEllipse': () => { if (targetLayerId) { const r = M.addShapeNode(doc, editingSymbolId, targetLayerId, frame, 'ellipse'); commit(() => r.doc); setSelNode(r.nodeId); } },
+    'lib.addText': () => { if (targetLayerId) { const r = M.addTextNode(doc, editingSymbolId, targetLayerId, frame); commit(() => r.doc); setSelNodes([r.nodeId]); } },
+    'lib.addRect': () => { if (targetLayerId) { const r = M.addShapeNode(doc, editingSymbolId, targetLayerId, frame, 'rect'); commit(() => r.doc); setSelNodes([r.nodeId]); } },
+    'lib.addEllipse': () => { if (targetLayerId) { const r = M.addShapeNode(doc, editingSymbolId, targetLayerId, frame, 'ellipse'); commit(() => r.doc); setSelNodes([r.nodeId]); } },
 
     'arr.raiseLayer': () => { if (targetLayerId) mut(d => M.reorderLayer(d, editingSymbolId, targetLayerId, 1)); },
     'arr.lowerLayer': () => { if (targetLayerId) mut(d => M.reorderLayer(d, editingSymbolId, targetLayerId, -1)); },
@@ -218,7 +246,7 @@ export default function FlashApp() {
       const a = M.addAsset(doc, { name: item.label, kind: isVideo ? 'video' : 'image', url: item.url });
       const r = M.addImageNode(a.doc, editingSymbolId, targetLayerId, frame, a.id,
         { w, h, ...(isVideo ? { muted: true, volume: 1, trimInMs: 0, trimOutMs: 0, fadeInMs: 0, fadeOutMs: 0 } : {}) }, isVideo ? 'video' : 'image');
-      commit(() => r.doc); setSelNode(r.nodeId);
+      commit(() => r.doc); setSelNodes([r.nodeId]);
     };
     if (isVideo) { const v = document.createElement('video'); v.onloadedmetadata = () => place(v.videoWidth, v.videoHeight); v.onerror = () => place(0, 0); v.src = item.url; }
     else { const img = new Image(); img.onload = () => place(img.naturalWidth, img.naturalHeight); img.onerror = () => place(0, 0); img.src = item.url; }
@@ -227,7 +255,7 @@ export default function FlashApp() {
   const placeInstance = useCallback((symId: string) => {
     if (!doc || !targetLayerId) return;
     const r = M.addInstanceNode(doc, editingSymbolId, targetLayerId, frame, symId);
-    commit(() => r.doc); setSelNode(r.nodeId);
+    commit(() => r.doc); setSelNodes([r.nodeId]);
   }, [doc, targetLayerId, editingSymbolId, frame, commit]);
 
   // Swap the media on an existing media node, keeping its transform. New aspect keeps the width and
@@ -262,6 +290,13 @@ export default function FlashApp() {
       { label: 'Create Motion Tween', disabled: !hasKf, checked: kf?.tween !== 'none' && !!kf, onClick: () => mut(d => M.patchKeyframe(d, editingSymbolId, layerId, f, { tween: kf?.tween === 'motion' ? 'none' : 'motion', ease: [0.25, 0.1, 0.25, 1] })) },
       { separator: true },
       { label: 'Delete Keyframe', disabled: !hasKf || f === 0, onClick: () => { mut(d => M.deleteKeyframe(d, editingSymbolId, layerId, f)); if (selKf?.frame === f) setSelKf(null); } },
+      { separator: true },
+      // Playback boundary at this frame: the playhead loops back to the start, or stops. Clicking the
+      // active one again clears it. It's per-symbol (the whole timeline), not per-layer.
+      { label: 'Loop to Start Here', disabled: f === 0, checked: editingSymbol?.loopFrame === f && (editingSymbol?.loopAction ?? 'loop') === 'loop',
+        onClick: () => mut(d => M.setSymbolLoop(d, editingSymbolId, editingSymbol?.loopFrame === f && (editingSymbol?.loopAction ?? 'loop') === 'loop' ? null : f, 'loop')) },
+      { label: 'Stop Here', disabled: f === 0, checked: editingSymbol?.loopFrame === f && editingSymbol?.loopAction === 'stop',
+        onClick: () => mut(d => M.setSymbolLoop(d, editingSymbolId, editingSymbol?.loopFrame === f && editingSymbol?.loopAction === 'stop' ? null : f, 'stop')) },
     ]);
   };
 
@@ -280,8 +315,8 @@ export default function FlashApp() {
     { label: 'Send to Back', onClick: () => mut(d => M.patchNode(d, editingSymbolId, node.id, { ord: -1 })) },
     { separator: true },
     { label: 'Duplicate to New Layer', shortcut: 'Ctrl+D', onClick: () => H['edit.duplicate']?.() },
-    { label: 'Duplicate on Same Layer', onClick: () => { if (!doc) return; const r = M.duplicateNode(doc, editingSymbolId, node.id, true); if (r.nodeId) { commit(() => r.doc); setSelNode(r.nodeId); } } },
-    { label: 'Delete', shortcut: 'Del', onClick: () => { mut(d => M.deleteNode(d, editingSymbolId, node.id)); setSelNode(null); } },
+    { label: 'Duplicate on Same Layer', onClick: () => { if (!doc) return; const r = M.duplicateNode(doc, editingSymbolId, node.id, true); if (r.nodeId) { commit(() => r.doc); setSelNodes([r.nodeId]); } } },
+    { label: selNodes.includes(node.id) && selNodes.length > 1 ? `Delete ${selNodes.length} objects` : 'Delete', shortcut: 'Del', onClick: () => { const ids = selNodes.includes(node.id) && selNodes.length > 1 ? selNodes : [node.id]; mut(d => ids.reduce((dd, id) => M.deleteNode(dd, editingSymbolId, id), d)); setSelNodes([]); } },
   ];
 
   if (!doc || !editingSymbol) return <div className="h-screen flex items-center justify-center text-slate-500 bg-slate-950">Loading…</div>;
@@ -299,7 +334,7 @@ export default function FlashApp() {
     stage: {
       title: 'Stage',
       body: <MeasuredStage doc={doc} symbolId={editingSymbolId} frame={frame}
-        selectedNodeId={selNode} onSelectNode={setSelNode}
+        selectedNodeId={selNode} selectedNodeIds={selNodes} onSelectNode={selectOne} onToggleNode={toggleNode}
         onMoveNode={(id: string, x: number, y: number) => mut(d => M.patchNode(d, editingSymbolId, id, { x, y }), 'move')}
         onTransformNode={(id: string, p: Partial<Node>) => mut(d => M.patchNode(d, editingSymbolId, id, p), 'xform')}
         onEditInstance={(symId: string) => diveInto(symId)}
@@ -309,7 +344,7 @@ export default function FlashApp() {
       title: 'Timeline',
       body: <TimelinePanel doc={doc} symbol={editingSymbol} frame={frame} selectedLayerId={selLayer} selectedKfFrame={selKf?.frame ?? null}
         onSeek={setFrame} onSelectLayer={setSelLayer}
-        onSelectKeyframe={(layerId, f) => { setSelLayer(layerId); setSelKf({ layerId, frame: f }); setSelNode(null); setFrame(f); }}
+        onSelectKeyframe={(layerId, f) => { setSelLayer(layerId); setSelKf({ layerId, frame: f }); setSelNodes([]); setFrame(f); }}
         onMoveKeyframe={(layerId, from, to) => { mut(d => M.moveKeyframe(d, editingSymbolId, layerId, from, to), 'kfmove'); if (selKf?.frame === from) setSelKf({ layerId, frame: to }); }}
         onFrameContext={(e, layerId, f) => openFrameMenu(e, layerId, f)}
         onToggleVisible={id => mut(d => M.patchLayer(d, editingSymbolId, id, { visible: !editingSymbol.layers.find(l => l.id === id)?.visible }))}

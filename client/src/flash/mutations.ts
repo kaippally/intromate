@@ -41,6 +41,11 @@ export function renameSymbol(doc: FlashDoc, id: string, name: string): FlashDoc 
   return withSymbol(doc, id, s => { s.name = name; });
 }
 
+// The playback loop/stop point for a symbol's timeline. Pass frame=null to clear it.
+export function setSymbolLoop(doc: FlashDoc, id: string, loopFrame: number | null, loopAction: 'loop' | 'stop'): FlashDoc {
+  return withSymbol(doc, id, s => { s.loopFrame = loopFrame; s.loopAction = loopAction; });
+}
+
 export function deleteSymbol(doc: FlashDoc, id: string): FlashDoc {
   if (id === doc.rootSymbol) return doc;
   const next = clone(doc);
