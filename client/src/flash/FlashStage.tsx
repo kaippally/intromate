@@ -27,7 +27,7 @@ function dragLoop(onMove: (ev: MouseEvent) => void) {
 // The Stage: resolves the editing symbol's display list at the current frame and draws it, scaled
 // to the panel. Everything outside the document rectangle is clipped, as Flash clips the Stage.
 // Selection handles + drag-to-move edit the selected node's transform directly on the canvas.
-export function FlashStage({ doc, symbolId, frame, boxW, boxH, selectedNodeId, selectedNodeIds, onSelectNode, onToggleNode, onMoveNode, onTransformNode, onEditInstance, editable = true }: {
+export function FlashStage({ doc, symbolId, frame, boxW, boxH, selectedNodeId, selectedNodeIds, onSelectNode, onToggleNode, onMoveNode, onTransformNode, onEditInstance, onTogglePlay, editable = true }: {
   doc: FlashDoc;
   symbolId: string;
   frame: number;
@@ -40,6 +40,7 @@ export function FlashStage({ doc, symbolId, frame, boxW, boxH, selectedNodeId, s
   onMoveNode?: (id: string, x: number, y: number) => void;
   onTransformNode?: (id: string, patch: Partial<Node>) => void;
   onEditInstance?: (symbolId: string) => void;
+  onTogglePlay?: () => void;
   editable?: boolean;
 }) {
   const sym = findSymbol(doc, symbolId);
@@ -121,12 +122,14 @@ export function FlashStage({ doc, symbolId, frame, boxW, boxH, selectedNodeId, s
     }
     onSelectNode?.(null);
   }
-  // Double-click an instance on the canvas → open that object's own timeline (dive in).
+  // Double-click an instance → open its own timeline (dive in). Double-click anywhere else on the
+  // canvas (a video, a shape, empty stage) → toggle playback.
   function stageDoubleClick(e: React.MouseEvent) {
-    if (!editable || !onEditInstance) return;
+    if (!editable) return;
     const id = hitTopId(e.target);
     const n = id ? nodeById(id) : null;
-    if (n?.kind === 'instance' && n.symbolRef) onEditInstance(n.symbolRef);
+    if (n?.kind === 'instance' && n.symbolRef) { onEditInstance?.(n.symbolRef); return; }
+    onTogglePlay?.();
   }
 
   function startDrag(e: React.MouseEvent, node: Node) {

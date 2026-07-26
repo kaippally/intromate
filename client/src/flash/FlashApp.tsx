@@ -338,6 +338,7 @@ export default function FlashApp() {
         onMoveNode={(id: string, x: number, y: number) => mut(d => M.patchNode(d, editingSymbolId, id, { x, y }), 'move')}
         onTransformNode={(id: string, p: Partial<Node>) => mut(d => M.patchNode(d, editingSymbolId, id, p), 'xform')}
         onEditInstance={(symId: string) => diveInto(symId)}
+        onTogglePlay={() => setPlaying(p => !p)}
         onContext={ctx.open} nodeMenu={nodeMenu} />,
     },
     timeline: {
