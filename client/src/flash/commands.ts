@@ -55,9 +55,10 @@ export const COMMANDS: CommandDef[] = [
   { id: 'lib.import',      label: 'Import Media…',        category: 'Library', defaultKeys: ['Ctrl+R'] },
   { id: 'lib.duplicate',   label: 'Duplicate Symbol',    category: 'Library', defaultKeys: [] },
   { id: 'lib.edit',        label: 'Edit Symbol (open tab)', category: 'Library', defaultKeys: ['Ctrl+E'] },
-  { id: 'lib.addText',     label: 'Add Text',            category: 'Library', defaultKeys: ['T'] },
-  { id: 'lib.addRect',     label: 'Add Rectangle',       category: 'Library', defaultKeys: ['R'] },
-  { id: 'lib.addEllipse',  label: 'Add Ellipse',         category: 'Library', defaultKeys: ['O'] },
+  // Modifier required: bare T/R/O dropped objects on the stage on any stray keypress.
+  { id: 'lib.addText',     label: 'Add Text',            category: 'Library', defaultKeys: ['Alt+T'] },
+  { id: 'lib.addRect',     label: 'Add Rectangle',       category: 'Library', defaultKeys: ['Alt+R'] },
+  { id: 'lib.addEllipse',  label: 'Add Ellipse',         category: 'Library', defaultKeys: ['Alt+O'] },
 
   // Arrange (z-order within a layer / layer order)
   { id: 'arr.raiseLayer',  label: 'Raise Layer',         category: 'Arrange', defaultKeys: ['Ctrl+Up'] },

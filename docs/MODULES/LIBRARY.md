@@ -31,6 +31,11 @@ object defaults to a **new layer** (Stage right-click → Duplicate to New Layer
 
 ## Media & replacement
 
+- **One media per layer.** Placing an image or video always creates its **own new layer**
+  (`addMediaLayer`) — never a second media object on an existing one. The layer is blank up to the
+  playhead and its **first keyframe sits at the playhead frame**, carrying the media; that frame is
+  the clip's in-point, and nothing of it draws before it. This is the per-layer tween rule
+  ([TIMELINE.md](TIMELINE.md)) applied to media: a tween on a media layer animates exactly one clip.
 - Assets come from IntroMate's own store **and** the read-only Studio Mate libraries (images, audio,
   music, videos, StreamCapture clips), via the shared `MediaPicker`
   ([../../client/src/components/MediaPicker.tsx](../../client/src/components/MediaPicker.tsx)).

@@ -37,9 +37,14 @@ the "bounding box only covers a strip of the image" bug — the box now equals t
 | Drag body | move | `x/y`; box body and object are both draggable |
 | Drag a handle (8) | resize → `scaleX/scaleY` | **opposite edge pinned** (drag W → right edge fixed by adjusting `x`); corner + **Ctrl** = uniform |
 | Drag rotate handle | `rotation` | round handle above the box |
-| **Shift + wheel** | uniform scale (Z position) | non-passive listener |
-| **Ctrl + wheel** | `z` depth (perspective dolly) | non-passive so the page doesn't zoom |
+| **Ctrl + wheel** | zoom the **canvas** (0.2×–8×) | cursor-anchored; the point under the pointer stays put. Never the browser's page zoom. Resets when a different symbol opens |
+| **Shift + wheel** | uniform scale of the selected node | `scaleX/scaleY` × 1.05 per notch |
+| **Alt + wheel** | `z` depth (perspective dolly) | ±40 per notch |
 | **Ctrl + drag** body | perspective tumble `rotX/rotY` | Studio Mate `@sm/lib/tumble`, 0.5°/px yaw+pitch |
+
+All three wheel gestures are attached natively with `{ passive: false }` so `preventDefault` actually
+suppresses the browser gesture. *(Ctrl+wheel used to be Z depth; it became canvas zoom when the
+browser-zoom guard landed, and Z depth moved to Alt+wheel.)*
 
 **Opposite-edge anchoring:** the object's origin is its top-left, so E/S handles already pin
 left/top; for W/N handles the resize also moves `x/y` to pin the right/bottom edge. *(Fixed "E/S/SE
@@ -53,8 +58,14 @@ object's on-screen size (`selRect`), so it tracks the cursor 1:1 at any zoom.
 
 Opens the node context menu (built in `FlashApp.nodeMenu`, rendered by
 [ContextMenu.tsx](../../client/src/flash/ContextMenu.tsx)): Edit (dive in) · **Replace image/video…**
-(type-locked to the node's kind) · Convert to Object Timeline · Loop mode (instances) · Bring to
-Front / Send to Back · **Duplicate to New Layer / Same Layer** · Delete.
+(type-locked to the node's kind) · **Start Play** (video only) · Convert to Object Timeline · Loop
+mode (instances) · Bring to Front / Send to Back · **Duplicate to New Layer / Same Layer** · Delete.
+
+**Start Play** is a checkable toggle shown only on `video` nodes. It writes `props.autoplay` on the
+node, and `DisplayNode` plays or pauses the real `<video>` element in response — toggling it off also
+rewinds to 0, so the stage returns to the deterministic first frame. The flag is document state, so
+the resolver stays pure; this is *element* playback, not frame-synced playback (still pending — see
+[../FLASH.md](../FLASH.md) §11).
 
 ## Wiring
 

@@ -3,15 +3,25 @@
   "version": "0.1.0",
   "private": true,
   "description": "IntroMate — animated intro/opener maker. Reuses the Studio Mate motion engine (IN/HOLD/OUT effects, L3 track model, surface reflection, 3D slabs) on a seekable clock, and renders to video.",
-  "workspaces": ["server", "client"],
+  "workspaces": [
+    "server",
+    "client"
+  ],
   "scripts": {
     "dev": "concurrently -n server,client -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
     "dev:server": "npm --workspace server run dev",
     "dev:client": "npm --workspace client run dev",
+    "live": "bash scripts/ensure-live.sh",
+    "monitor": "node scripts/monitor.mjs",
+    "monitor:status": "curl -s http://localhost:4041/api/monitor/health",
+    "pm2:setup": "pm2 start scripts/monitor.mjs --name intromate-monitor && pm2 save",
     "build": "npm --workspace client run build",
     "typecheck": "npm --workspace server run typecheck"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"
+  },
+  "dependencies": {
+    "pm2": "7.0.1"
   }
 }

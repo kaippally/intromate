@@ -33,12 +33,29 @@ c:\KC_Assets\StudioMate     read-only       motion engine, fonts, media librarie
 
 ## Run
 
+IntroMate is **PM2-managed** as part of the Studio Mate stack — `intromate-server` (:4040, `tsx
+watch`) and `intromate-client` (:5200, Vite). Both are `pm2 save`d, so they come back on boot and
+are normally **already running**. HMR and server auto-reload work through PM2.
+
+```powershell
+npx pm2 restart intromate-server      # after a server change that needs a hard reload
+npx pm2 logs intromate-server         # tail the server
+npx pm2 status                        # is it up?
+```
+
+`npm run dev` still works, but only if PM2 is **not** already serving those ports — otherwise the two
+fight over 4040/5200. Stop the PM2 pair first (`npx pm2 stop intromate-server intromate-client`).
+
 ```powershell
 cd C:\KC_Assets\IntroMate
 npm install          # once
 npx playwright install chromium chromium-headless-shell   # once — used by the renderer
-npm run dev          # server :4040 + client :5200
+npm run dev          # only when the PM2 processes are stopped
 ```
+
+> `better-sqlite3` is a native module compiled for the Node major in use (currently **20.16.0**,
+> matching the PM2 daemon). Switching Node majors means `npm rebuild better-sqlite3`, or the server
+> crashes on an ABI mismatch at startup.
 
 Open <http://localhost:5200/>. The render page (what the exporter screenshots, also a clean 1:1
 preview) is <http://localhost:5200/render.html?project=ID>.

@@ -36,7 +36,9 @@ CREATE TABLE IF NOT EXISTS symbol (
   type        TEXT NOT NULL DEFAULT 'movieclip',  -- scene | movieclip | graphic | button
   reg_x       REAL NOT NULL DEFAULT 0,            -- registration point (local origin)
   reg_y       REAL NOT NULL DEFAULT 0,
-  ord         INTEGER NOT NULL DEFAULT 0          -- Library sort order
+  ord         INTEGER NOT NULL DEFAULT 0,         -- Library sort order
+  loop_frame  INTEGER,                            -- playback boundary; null = play the whole symbol
+  loop_action TEXT                                -- loop | stop  (what happens at loop_frame)
 );
 CREATE INDEX IF NOT EXISTS symbol_doc ON symbol(document_id);
 
@@ -112,7 +114,7 @@ CREATE TABLE IF NOT EXISTS asset (
 CREATE INDEX IF NOT EXISTS asset_doc ON asset(document_id);
 `);
 
-// Migrate an already-created node table to the newer columns (no-op on a fresh DB).
+// Migrate an already-created table to the newer columns (no-op on a fresh DB).
 for (const col of ['rot_x REAL NOT NULL DEFAULT 0', 'rot_y REAL NOT NULL DEFAULT 0', 'hold TEXT', 'z REAL NOT NULL DEFAULT 0']) {
   try { db.exec(`ALTER TABLE node ADD COLUMN ${col}`); } catch { /* already present */ }
 }

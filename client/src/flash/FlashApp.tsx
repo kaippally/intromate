@@ -12,6 +12,7 @@ import { TimelinePanel } from './panels/TimelinePanel';
 import { InspectorPanel } from './panels/InspectorPanel';
 import { ShortcutManager } from './ShortcutManager';
 import { SettingsPanel } from './SettingsPanel';
+import { BuildStamp } from './BuildStamp';
 import { useContextMenu, type MenuItem } from './ContextMenu';
 import { MediaPicker } from '../components/MediaPicker';
 import type { MediaItem } from '../types';
@@ -173,7 +174,16 @@ export default function FlashApp() {
       const r = M.duplicateNode(doc, editingSymbolId, selNode, false); // copy onto its own new layer
       if (r.nodeId) { commit(() => r.doc); setSelNodes([r.nodeId]); setSelLayer(r.layerId); }
     },
-    'edit.delete': () => { if (selNodes.length) { const ids = selNodes; mut(d => ids.reduce((dd, id) => M.deleteNode(dd, editingSymbolId, id), d)); setSelNodes([]); } },
+    // Delete acts on whatever is selected: stage objects first, else the objects sitting on the
+    // selected keyframe (selecting a keyframe clears the stage selection, so the two never collide).
+    // Node ids are per-keyframe copies — only the picked keyframe is emptied, the object survives on
+    // its other keyframes.
+    'edit.delete': () => {
+      const ids = selNodes.length ? selNodes : (selectedKeyframe?.nodes ?? []).map(n => n.id);
+      if (!ids.length) return;
+      mut(d => ids.reduce((dd, id) => M.deleteNode(dd, editingSymbolId, id), d));
+      setSelNodes([]);
+    },
 
     'play.toggle': () => setPlaying(p => !p),
     'play.stop': () => { setPlaying(false); setFrame(0); },
@@ -236,7 +246,7 @@ export default function FlashApp() {
 
   // ── Placing media / instances into the current timeline ────────────────────────
   const placeMedia = useCallback((item: MediaItem) => {
-    if (!doc || !targetLayerId) return;
+    if (!doc) return;
     const isVideo = /\.(mp4|webm|mov|mkv)$/i.test(item.url);
     // Probe the natural aspect so the node (and therefore its bounding box) is the right shape.
     const place = (aw: number, ah: number) => {
@@ -244,13 +254,13 @@ export default function FlashApp() {
       const w = Math.round(Math.min(doc.width * 0.5, aw || doc.width * 0.5));
       const h = Math.round(w / aspect);
       const a = M.addAsset(doc, { name: item.label, kind: isVideo ? 'video' : 'image', url: item.url });
-      const r = M.addImageNode(a.doc, editingSymbolId, targetLayerId, frame, a.id,
+      const r = M.addMediaLayer(a.doc, editingSymbolId, frame, a.id,
         { w, h, ...(isVideo ? { muted: true, volume: 1, trimInMs: 0, trimOutMs: 0, fadeInMs: 0, fadeOutMs: 0 } : {}) }, isVideo ? 'video' : 'image');
-      commit(() => r.doc); setSelNodes([r.nodeId]);
+      commit(() => r.doc); setSelNodes([r.nodeId]); setSelLayer(r.layerId);
     };
     if (isVideo) { const v = document.createElement('video'); v.onloadedmetadata = () => place(v.videoWidth, v.videoHeight); v.onerror = () => place(0, 0); v.src = item.url; }
     else { const img = new Image(); img.onload = () => place(img.naturalWidth, img.naturalHeight); img.onerror = () => place(0, 0); img.src = item.url; }
-  }, [doc, targetLayerId, editingSymbolId, frame, commit]);
+  }, [doc, editingSymbolId, frame, commit]);
 
   const placeInstance = useCallback((symId: string) => {
     if (!doc || !targetLayerId) return;
@@ -308,6 +318,11 @@ export default function FlashApp() {
     ...((node.kind === 'image' || node.kind === 'video')
       ? [{ label: `Replace ${node.kind}…`, onClick: () => setReplaceReq({ nodeId: node.id, kind: node.kind as 'image' | 'video' }) }]
       : []),
+    // Video only: whether this clip runs with the timeline transport. On by default.
+    ...(node.kind === 'video'
+      ? [{ label: 'Start Play', checked: node.props?.autoplay !== false,
+           onClick: () => mut(d => M.patchNode(d, editingSymbolId, node.id, { props: { autoplay: node.props?.autoplay === false } })) }]
+      : []),
     { label: 'Convert to Object Timeline', shortcut: 'Ctrl+Shift+F8', onClick: () => H['obj.convert']?.() },
     { separator: true },
     { label: 'Loop', submenu: node.kind === 'instance' ? (['loop', 'playonce', 'single'] as const).map(m => ({ label: m, checked: (node.loopMode ?? 'loop') === m, onClick: () => mut(d => M.patchNode(d, editingSymbolId, node.id, { loopMode: m })) })) : undefined, disabled: node.kind !== 'instance' },
@@ -333,7 +348,7 @@ export default function FlashApp() {
     },
     stage: {
       title: 'Stage',
-      body: <MeasuredStage doc={doc} symbolId={editingSymbolId} frame={frame}
+      body: <MeasuredStage doc={doc} symbolId={editingSymbolId} frame={frame} playing={playing}
         selectedNodeId={selNode} selectedNodeIds={selNodes} onSelectNode={selectOne} onToggleNode={toggleNode}
         onMoveNode={(id: string, x: number, y: number) => mut(d => M.patchNode(d, editingSymbolId, id, { x, y }), 'move')}
         onTransformNode={(id: string, p: Partial<Node>) => mut(d => M.patchNode(d, editingSymbolId, id, p), 'xform')}
@@ -381,6 +396,7 @@ export default function FlashApp() {
         <span className="tabular-nums text-slate-400 w-16 text-center">frame {frame}</span>
 
         <div className="flex-1" />
+        <BuildStamp />
         <button className="im-btn" onClick={() => setShowKeys(true)} title="Keyboard Shortcuts (Ctrl+/)">⌨ Shortcuts</button>
         <button className="im-btn text-base leading-none px-1.5" onClick={() => setShowSettings(true)} title="Settings">⚙</button>
       </header>

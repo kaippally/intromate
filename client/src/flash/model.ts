@@ -37,7 +37,10 @@ export interface TextProps {
   w?: number; h?: number;     // box (0/undefined = auto-size)
   gradient?: { c1: string; c2: string; angle: number };
 }
-export interface MediaProps { w?: number; h?: number; crop?: { x: number; y: number; w: number; h: number } }
+export interface MediaProps {
+  w?: number; h?: number; crop?: { x: number; y: number; w: number; h: number };
+  autoplay?: boolean;         // video: play the element on stage (Stage right-click → Start Play)
+}
 export type NodeProps = Partial<ShapeProps & TextProps & MediaProps> & Record<string, unknown>;
 
 export interface Node extends Transform {

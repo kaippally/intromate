@@ -16,7 +16,8 @@ tables.
 ```
 document(id PK, name, fps, width, height, bg, root_symbol, created_at, updated_at)
 
-symbol(id PK, document_id FK→document, name, type, reg_x, reg_y, ord)
+symbol(id PK, document_id FK→document, name, type, reg_x, reg_y, ord,
+       loop_frame, loop_action)          -- playback boundary: loop back to 0 | stop
 layer(id PK, symbol_id FK→symbol, name, ord, kind, parent_id FK→layer, locked, visible, outlined)
 keyframe(id PK, layer_id FK→layer, frame, kind, tween, ease, label, script,
          sound_asset FK→asset, sound_sync)

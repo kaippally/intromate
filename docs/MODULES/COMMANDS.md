@@ -46,10 +46,23 @@ same map the dispatcher reads.
 | Timeline | Remove Frame / Clear Keyframe | `Shift+F5` · `Shift+F6` |
 | Timeline | Motion Tween · New / Delete Layer | `Ctrl+Alt+M` · `Ctrl+Shift+L` · `Ctrl+Shift+Delete` |
 | Library | New Symbol · Convert · Import · Edit | `Ctrl+F8` · `F8` · `Ctrl+R` · `Ctrl+E` |
-| Library | Add Text / Rect / Ellipse | `T` · `R` · `O` |
+| Library | Add Text / Rect / Ellipse | `Alt+T` · `Alt+R` · `Alt+O` |
 | Arrange | Raise / Lower Layer | `Ctrl+↑` · `Ctrl+↓` |
 | Selection | Nudge L/R/U/D | `Alt+Arrow…` |
 | View | Zoom In/Out/Fit · Shortcuts | `Ctrl+=` · `Ctrl+-` · `Ctrl+0` · `Ctrl+/` |
+
+## What `Delete` acts on
+
+`edit.delete` deletes **whatever is selected**, in this order:
+
+1. **Stage objects** — every node in the multi-selection (`Ctrl+click` to extend it).
+2. **Otherwise, the selected keyframe's objects** — selecting a keyframe in the timeline clears the
+   stage selection, so the two can never collide.
+
+Because each keyframe holds its **own copy** of an object (same `token`, fresh `id` — see
+[../ARCHITECTURE/DATA_MODEL.md](../ARCHITECTURE/DATA_MODEL.md)), deleting from a keyframe empties
+only *that* keyframe; the object survives on its other keyframes. To remove the keyframe itself, use
+the frame right-click menu → **Delete Keyframe** (frame 0 is pinned).
 
 ## Undo / redo (100 levels)
 

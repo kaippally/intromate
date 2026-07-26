@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react';
 import { tumbleRotation } from '@sm/lib/tumble';
 import { findSymbol, type FlashDoc, type Node } from './model';
 import { resolveSymbol } from './resolve';
-import { DisplayNode } from './DisplayNode';
+import { DisplayNode, StagePlaying } from './DisplayNode';
 
 // Coalesce a drag's mousemove to at most one update per animation frame. A fast pointer fires far
 // more than 60 events/sec; committing each one rebuilds the whole document and re-renders every
@@ -27,12 +27,13 @@ function dragLoop(onMove: (ev: MouseEvent) => void) {
 // The Stage: resolves the editing symbol's display list at the current frame and draws it, scaled
 // to the panel. Everything outside the document rectangle is clipped, as Flash clips the Stage.
 // Selection handles + drag-to-move edit the selected node's transform directly on the canvas.
-export function FlashStage({ doc, symbolId, frame, boxW, boxH, selectedNodeId, selectedNodeIds, onSelectNode, onToggleNode, onMoveNode, onTransformNode, onEditInstance, onTogglePlay, editable = true }: {
+export function FlashStage({ doc, symbolId, frame, boxW, boxH, playing = false, selectedNodeId, selectedNodeIds, onSelectNode, onToggleNode, onMoveNode, onTransformNode, onEditInstance, onTogglePlay, editable = true }: {
   doc: FlashDoc;
   symbolId: string;
   frame: number;
   boxW: number;
   boxH: number;
+  playing?: boolean;          // transport state: video leaves free-run while this is true
   selectedNodeId?: string | null;
   selectedNodeIds?: string[];
   onSelectNode?: (id: string | null) => void;
@@ -197,7 +198,9 @@ export function FlashStage({ doc, symbolId, frame, boxW, boxH, selectedNodeId, s
       onMouseDown={stageMouseDown} onDoubleClick={stageDoubleClick}>
       <div className="im-stage-frame relative m-auto shrink-0 shadow-2xl shadow-black/60 ring-1 ring-slate-700" style={{ width: doc.width * scale, height: doc.height * scale }}>
         <div style={stage}>
-          {list.map(n => <DisplayNode key={n.key} node={n} />)}
+          <StagePlaying.Provider value={playing}>
+            {list.map(n => <DisplayNode key={n.key} node={n} />)}
+          </StagePlaying.Provider>
         </div>
         {editable && multiRects.map((r, i) => (
           <div key={i} className="absolute border border-sky-400/70 pointer-events-none" style={{ left: r.left, top: r.top, width: r.width, height: r.height }} />

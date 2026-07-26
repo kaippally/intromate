@@ -190,19 +190,25 @@ function baseNode(kind: NodeKind, x: number, y: number): Node {
   return { id: uid('nd'), token: uid('tok'), ord: 0, kind, ...IDENTITY, x, y, alpha: 1, blend: 'normal', loopMode: 'loop', firstFrame: 0 };
 }
 
-export function addImageNode(doc: FlashDoc, symId: string, layerId: string, frame: number, assetId: string, props?: Record<string, unknown>, kind: 'image' | 'video' = 'image'): { doc: FlashDoc; nodeId: string } {
-  let nodeId = '';
+// Media is one-per-timeline: a placed image/video always gets its OWN layer, so the per-layer tween
+// rule means a tween on it animates exactly that clip. The layer is blank up to the playhead frame
+// and its first keyframe sits there carrying the media — where you drop it is the clip's in-point.
+export function addMediaLayer(doc: FlashDoc, symId: string, frame: number, assetId: string, props?: Record<string, unknown>, kind: 'image' | 'video' = 'image'): { doc: FlashDoc; nodeId: string; layerId: string } {
+  let nodeId = '', layerId = '';
   const w = Number((props as any)?.w) || 640, h = Number((props as any)?.h) || 360;
   const c = centre(doc, w, h);
+  const start = Math.max(0, Math.round(frame));
   const next = withSymbol(doc, symId, s => {
-    const l = s.layers.find(x => x.id === layerId);
-    if (!l) return;
-    const k = ensureKeyframe(l, frame);
-    if (k.kind === 'blank') k.kind = 'key';
-    const n = baseNode(kind, c.x, c.y); n.assetId = assetId; n.ord = k.nodes.length; n.props = props;
-    k.nodes.push(n); nodeId = n.id;
+    const n = baseNode(kind, c.x, c.y); n.assetId = assetId; n.ord = 0; n.props = props;
+    const keyframes: Keyframe[] = [];
+    if (start > 0) keyframes.push({ id: uid('kf'), frame: 0, kind: 'blank', tween: 'none', ease: null, label: null, script: null, soundAssetId: null, soundSync: 'event', nodes: [] });
+    keyframes.push({ id: uid('kf'), frame: start, kind: 'key', tween: 'none', ease: null, label: null, script: null, soundAssetId: null, soundSync: 'event', nodes: [n] });
+    const ord = s.layers.length;
+    layerId = uid('lyr');
+    s.layers.push({ id: layerId, name: `Layer ${ord + 1}`, ord, kind: 'normal', parentId: null, locked: false, visible: true, outlined: false, keyframes });
+    nodeId = n.id;
   });
-  return { doc: next, nodeId };
+  return { doc: next, nodeId, layerId };
 }
 
 // Centre a w×h box in the document frame.

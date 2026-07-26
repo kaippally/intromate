@@ -164,13 +164,16 @@ rename / delete that object.
 | Move | Drag the object or its selection box |
 | Resize | Drag a handle — the **opposite edge stays pinned**; corner + **Ctrl** = uniform |
 | Rotate | Drag the round handle above the box |
-| Scale (Z position) | **Shift + wheel** |
-| Perspective (Z depth) | **Ctrl + wheel**, or **Ctrl + drag** the body (Studio Mate `tumble`: yaw/pitch) |
+| Scale the selected object | **Shift + wheel** |
+| Zoom the canvas | **Ctrl + wheel** — cursor-anchored, 0.2×–8×; never the browser's page zoom |
+| Perspective (Z depth) | **Alt + wheel**, or **Ctrl + drag** the body (Studio Mate `tumble`: yaw/pitch) |
+| Add to / remove from the selection | **Ctrl + click** — `Delete` removes every selected object |
 | Dive into a nested object | **Double-click** the instance on stage (or double-click it in the Library) |
 
 Right-click a stage object → assign settings: Edit, **Replace image/video…** (type-locked — an image
-slot accepts only images), Convert to Object Timeline, Loop mode, z-order, **Duplicate to New Layer /
-Same Layer**, Delete.
+slot accepts only images), **Start Play** (video only — a checkable toggle that plays the `<video>`
+element on stage; off rewinds it), Convert to Object Timeline, Loop mode, z-order, **Duplicate to New
+Layer / Same Layer**, Delete.
 
 **Duplicating** an object copies it onto its **own new layer** by default, because tweens are
 per-layer — two objects that must animate independently need separate layers. "Duplicate on Same
@@ -210,7 +213,7 @@ defaults; overrides persist in `localStorage`.
 | Timeline | Remove Frame / Clear Keyframe | `Shift+F5` · `Shift+F6` |
 | Timeline | Motion Tween · New / Delete Layer | `Ctrl+Alt+M` · `Ctrl+Shift+L` · `Ctrl+Shift+Delete` |
 | Library | New Symbol · Convert · Import · Edit | `Ctrl+F8` · `F8` · `Ctrl+R` · `Ctrl+E` |
-| Library | Add Text / Rect / Ellipse | `T` · `R` · `O` |
+| Library | Add Text / Rect / Ellipse | `Alt+T` · `Alt+R` · `Alt+O` |
 | Arrange | Raise / Lower Layer | `Ctrl+Up` · `Ctrl+Down` |
 | Selection | Nudge L/R/U/D | `Alt+Arrow…` |
 | View | Zoom In/Out/Fit · Shortcuts | `Ctrl+=` · `Ctrl+-` · `Ctrl+0` · `Ctrl+/` |

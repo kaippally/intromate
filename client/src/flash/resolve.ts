@@ -15,6 +15,7 @@ export interface RenderLeaf {
   kind: 'image' | 'video' | 'text' | 'shape';
   assetUrl?: string;
   props?: Record<string, unknown>;
+  mediaTime?: number;         // video only: the media position (seconds) this frame should show
 }
 
 export interface RenderNode {
@@ -74,6 +75,39 @@ function tweenNode(a: Node, b: Node, t: number): { xform: Transform; alpha: numb
   };
 }
 
+// The frame an object was born on: walk back from the keyframe in force while consecutive keyframes
+// still carry the same token. A video's clock has to run from there, not from whichever keyframe is
+// currently active — every keyframe the author adds would otherwise restart the clip from zero.
+function tokenOrigin(layer: Layer, kfIndex: number, token: string): number {
+  const ks = layer.keyframes;
+  let i = kfIndex;
+  while (i > 0 && ks[i - 1]!.kind !== 'blank' && ks[i - 1]!.nodes.some(n => n.token === token)) i--;
+  return ks[i]?.frame ?? 0;
+}
+
+// Pair each node on keyframe A with its counterpart on B, so the tween knows what "moves".
+//
+// Identity is the token (F6 clones a keyframe and keeps it, which is the intended workflow). But
+// authors routinely build a span by dropping a second object straight onto the end keyframe — that
+// object gets a fresh token, pairs with nothing, and the span silently renders static even though
+// the timeline draws a tween arrow. So when a token finds no partner, fall back to the first
+// unclaimed node of the same kind by z-order. Within one layer that is unambiguous: the per-layer
+// tween rule already means a layer animates one object.
+function pairNodes(a: Node[], b: Node[]): Map<string, Node> {
+  const out = new Map<string, Node>();
+  const free = new Set(b);
+  for (const n of a) {
+    const m = b.find(x => x.token === n.token);
+    if (m && free.has(m)) { out.set(n.id, m); free.delete(m); }
+  }
+  for (const n of a) {
+    if (out.has(n.id)) continue;
+    const m = [...free].sort((x, y) => x.ord - y.ord).find(x => x.kind === n.kind);
+    if (m) { out.set(n.id, m); free.delete(m); }
+  }
+  return out;
+}
+
 const nodeTransform = (n: Node): Transform => ({
   x: n.x, y: n.y, scaleX: n.scaleX, scaleY: n.scaleY, rotation: n.rotation, skewX: n.skewX, skewY: n.skewY,
   rotX: n.rotX ?? 0, rotY: n.rotY ?? 0, z: n.z ?? 0,
@@ -88,9 +122,27 @@ function localFrame(elapsed: number, firstFrame: number, length: number, mode: s
   return ((f % length) + length) % length; // loop
 }
 
+// The media position a video shows at this frame: where its own keyframe started it, plus how long
+// the playhead has been past that, from the trim-in point. Purely (elapsed, fps, trim) — no clock
+// is read here. The DOM leaf seeks to this when paired and only uses it to correct drift while the
+// timeline runs, so scrub, playback and a frame-stepped export all agree.
+function videoTime(props: Node['props'], elapsed: number, fps: number): number {
+  const p = (props ?? {}) as { trimInMs?: number; trimOutMs?: number };
+  const inS = (p.trimInMs ?? 0) / 1000;
+  const t = inS + Math.max(0, elapsed) / (fps || 30);
+  const outS = p.trimOutMs != null ? p.trimOutMs / 1000 : null;
+  return outS != null && outS > inS ? Math.min(t, outS) : t;
+}
+
 // ── Resolve one node at a given (possibly interpolated) transform ──────────────
-function resolveNode(doc: FlashDoc, node: Node, xform: Transform, alpha: number, path: string, depthGuard: number): RenderNode {
-  const base: RenderNode = { key: `${path}/${node.id}`, srcId: node.id, transform: xform, alpha, blend: node.blend, name: node.name };
+function resolveNode(doc: FlashDoc, node: Node, xform: Transform, alpha: number, path: string, depthGuard: number, elapsed = 0): RenderNode {
+  // Key on the TOKEN, not the node id. Each keyframe holds its own copy of an object with a fresh
+  // id, so an id-based key changes the moment the playhead crosses a keyframe — React then tears the
+  // element down and rebuilds it, which restarts any <video> from zero and made video playback
+  // impossible. The token is precisely the per-layer identity that persists across keyframes, so
+  // keying on it keeps one stable DOM element for the life of the object. srcId stays the real node
+  // id: selection hit-testing must still resolve to the node on THIS keyframe.
+  const base: RenderNode = { key: `${path}/${node.token || node.id}`, srcId: node.id, transform: xform, alpha, blend: node.blend, name: node.name };
 
   if (node.kind === 'instance' && node.symbolRef) {
     const sym = findSymbol(doc, node.symbolRef);
@@ -106,6 +158,7 @@ function resolveNode(doc: FlashDoc, node: Node, xform: Transform, alpha: number,
   if (node.kind === 'image' || node.kind === 'video') {
     const asset = doc.assets.find(a => a.id === node.assetId);
     base.leaf = { kind: node.kind, assetUrl: asset?.url, props: node.props };
+    if (node.kind === 'video') base.leaf.mediaTime = videoTime(node.props, elapsed, doc.fps);
   } else if (node.kind === 'text' || node.kind === 'shape') {
     base.leaf = { kind: node.kind, props: node.props };
   }
@@ -122,17 +175,18 @@ function resolveLayer(doc: FlashDoc, layer: Layer, frame: number, elapsedBase: n
   const tweening = kf.tween !== 'none' && !!next && next.frame > kf.frame;
   const span = tweening ? next!.frame - kf.frame : 1;
   const t = tweening ? ease(kf.ease, Math.max(0, Math.min(1, (frame - kf.frame) / span))) : 0;
-  const nextByToken = tweening ? new Map(next!.nodes.map(n => [n.token, n])) : null;
+  const pairs = tweening ? pairNodes(kf.nodes, next!.nodes) : null;
+  const kfIndex = Math.max(0, layer.keyframes.findIndex(k => k.id === kf.id));
 
   return [...kf.nodes].sort((a, b) => a.ord - b.ord).map(n => {
     let xform = nodeTransform(n);
     let alpha = n.alpha;
     if (tweening) {
-      const nb = nextByToken!.get(n.token);
+      const nb = pairs!.get(n.id);
       if (nb) { const r = tweenNode(n, nb, t); xform = r.xform; alpha = r.alpha; }
     }
-    // For a slaved instance, elapsed = how far the parent frame is past this keyframe's start.
-    const child = resolveNode(doc, n, xform, alpha, path, depthGuard);
+    // A media clock runs from the object's birth, so it survives intermediate keyframes.
+    const child = resolveNode(doc, n, xform, alpha, path, depthGuard, frame - tokenOrigin(layer, kfIndex, n.token) + elapsedBase);
     if (child.children && (n.loopMode ?? 'loop') !== 'single') {
       const sym = findSymbol(doc, n.symbolRef);
       if (sym) {

@@ -25,6 +25,9 @@ ruler units.
 - **Scrub** — click the ruler or a track; sets the frame (and selects that layer).
 - **Drag a keyframe dot** → move it to another frame (`moveKeyframe`; frame 0 is pinned, occupied
   frames rejected). Selecting a keyframe shows its easing in the Inspector.
+- **Select a keyframe → `Delete`** → removes the objects sitting on that keyframe (only that one —
+  each keyframe holds its own copy). The keyframe itself stays; use the right-click menu to remove
+  it. → [COMMANDS.md](COMMANDS.md) §What `Delete` acts on
 - **Right-click a frame** → keyframe context menu (built in `FlashApp.openFrameMenu`): Insert Keyframe
   (`Ctrl+Alt+K`/`F6`) · Insert Blank Keyframe (`F7`) · Create Motion Tween · Delete Keyframe — each
   enabled/disabled by whether a keyframe exists there.
@@ -45,7 +48,9 @@ Playhead position is app state (`frame`), reset to 0 on context change. Navigati
 
 A tween pairs nodes by `token` **within one layer** across its keyframes. Two objects that must
 animate independently therefore need **separate layers**. This is why **Duplicate** defaults to
-copying an object onto its **own new layer** (see [LIBRARY.md](LIBRARY.md) / [STAGE.md](STAGE.md)).
+copying an object onto its **own new layer** (see [LIBRARY.md](LIBRARY.md) / [STAGE.md](STAGE.md)),
+and why **placed media always gets its own layer** — a nested timeline holds many layers, but only
+one media object may occupy a layer.
 
 ## Playback
 

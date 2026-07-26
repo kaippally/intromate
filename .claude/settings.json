@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/ensure-live.sh",
+            "async": true,
+            "timeout": 30,
+            "statusMessage": "Checking dev servers"
+          }
+        ]
+      }
+    ]
+  }
+}
