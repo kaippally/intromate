@@ -50,7 +50,9 @@ function cubicBezier(p1x: number, p1y: number, p2x: number, p2y: number, t: numb
   return ((ay * u + by) * u + cy) * u;
 }
 
-function ease(spec: number[] | null | undefined, t: number): number {
+/** Eased progress through a tween span. Exported so a macro baking a path into keyframes can sample
+ *  the very curve the resolver will apply, instead of approximating it. */
+export function ease(spec: number[] | null | undefined, t: number): number {
   if (!spec || spec.length !== 4) return t; // linear
   return cubicBezier(spec[0]!, spec[1]!, spec[2]!, spec[3]!, t);
 }
@@ -228,11 +230,16 @@ export function resolveDocument(doc: FlashDoc, frame: number): RenderNode[] {
   return root ? resolveSymbol(doc, root, frame) : [];
 }
 
+/** Viewer distance for the per-node 3D projection. Anything that has to predict where a node at a
+ *  given z will actually land on screen (macros positioning a depth stack) must use this same value —
+ *  the projected scale of a node at depth z is PERSPECTIVE / (PERSPECTIVE − z). */
+export const PERSPECTIVE = 1200;
+
 /** CSS transform string for a resolved node (Flash order: translate, 3D tilt, rotate, skew, scale).
  *  The 3D tilt (rotX/rotY) is wrapped in a perspective so Ctrl+drag reads as real depth. */
 export function cssTransform(t: Transform): string {
   const has3d = t.rotX || t.rotY || t.z;
-  const persp = has3d ? `perspective(1200px) translateZ(${t.z ?? 0}px) rotateX(${t.rotX ?? 0}deg) rotateY(${t.rotY ?? 0}deg) ` : '';
+  const persp = has3d ? `perspective(${PERSPECTIVE}px) translateZ(${t.z ?? 0}px) rotateX(${t.rotX ?? 0}deg) rotateY(${t.rotY ?? 0}deg) ` : '';
   return `translate(${t.x}px, ${t.y}px) ${persp}rotate(${t.rotation}deg) skew(${t.skewX}deg, ${t.skewY}deg) scale(${t.scaleX}, ${t.scaleY})`;
 }
 

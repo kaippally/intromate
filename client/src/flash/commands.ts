@@ -75,6 +75,7 @@ export const COMMANDS: CommandDef[] = [
   { id: 'view.zoomOut',    label: 'Zoom Out',            category: 'View', defaultKeys: ['Ctrl+-'] },
   { id: 'view.zoomFit',    label: 'Zoom to Fit',         category: 'View', defaultKeys: ['Ctrl+0'] },
   { id: 'view.shortcuts',  label: 'Keyboard Shortcuts…', category: 'View', defaultKeys: ['Ctrl+/'] },
+  { id: 'view.macros',     label: 'Show Macro Panel',    category: 'View', defaultKeys: ['Ctrl+Alt+A'] },
 ];
 
 export const COMMAND_BY_ID = new Map(COMMANDS.map(c => [c.id, c]));

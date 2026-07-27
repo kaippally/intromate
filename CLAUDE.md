@@ -141,6 +141,7 @@ restarts every process on the machine including the StudioMate stack.
 | **Library** (symbols, instances, nesting tree, assets, replace) | [docs/MODULES/LIBRARY.md](docs/MODULES/LIBRARY.md) |
 | **Inspector** (contextual props, per-parameter hold, easing, style) | [docs/MODULES/INSPECTOR.md](docs/MODULES/INSPECTOR.md) |
 | **Commands / keymap / Shortcut Manager / undo** | [docs/MODULES/COMMANDS.md](docs/MODULES/COMMANDS.md) |
+| **Macros** (animation generators, Video Carousel, Macro panel) | [docs/MODULES/MACROS.md](docs/MODULES/MACROS.md) |
 | **Whole-tool reference (single page)** | [docs/FLASH.md](docs/FLASH.md) |
 | **Intro maker (seekable clock, video render)** | [README.md](README.md) |
 | **Dev philosophy, bug workflow, canonical directives** | [docs/SYSTEM_DIRECTIONS/DIRECTIVE_PRINCIPLES.md](docs/SYSTEM_DIRECTIONS/DIRECTIVE_PRINCIPLES.md) |
@@ -162,7 +163,8 @@ docs/
 │   ├── TIMELINE.md              # layers × frames, keyframes, tween spans, drag, +Layer
 │   ├── LIBRARY.md               # symbols, instance = node, containment tree, media + replace
 │   ├── INSPECTOR.md             # contextual props, hold toggles, easing bezier, border/crop/reflection
-│   └── COMMANDS.md              # command catalogue, keymap dispatch, Shortcut Manager, history
+│   ├── COMMANDS.md              # command catalogue, keymap dispatch, Shortcut Manager, history
+│   └── MACROS.md                # macro contract, Video Carousel (Slides IN/HOLD/OUT as keyframes)
 └── SYSTEM_DIRECTIONS/
     └── DIRECTIVE_PRINCIPLES.md  # design/dev philosophy, bug lifecycle, canonical rules
 ```

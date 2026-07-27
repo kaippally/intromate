@@ -3,7 +3,7 @@
 // and always correct, no partial-clone bookkeeping.
 
 import { activeKeyframe, findSymbol, symbolLength, IDENTITY } from './model';
-import type { Asset, FlashDoc, Keyframe, Layer, Node, NodeKind, Symbol, SymbolType } from './model';
+import type { Asset, FlashDoc, HeldParam, Keyframe, Layer, Node, NodeKind, Symbol, SymbolType, Transform, TweenKind } from './model';
 
 let seq = 0;
 export const uid = (p = 'x') => `${p}${Date.now().toString(36)}${(seq++).toString(36)}`;
@@ -209,6 +209,59 @@ export function addMediaLayer(doc: FlashDoc, symId: string, frame: number, asset
     nodeId = n.id;
   });
   return { doc: next, nodeId, layerId };
+}
+
+// A station a macro parks an object at on one keyframe: the pose it holds there, and how it travels
+// to the NEXT pose. Macros compute the geometry; this is the shape they hand over.
+export interface Pose extends Partial<Transform> {
+  frame: number;
+  alpha?: number;
+  tween?: TweenKind;
+  ease?: number[] | null;   // [x1,y1,x2,y2]; y outside 0..1 overshoots, which the resolver handles
+  hold?: HeldParam[];
+}
+
+// One media clip on its own layer, animated through a sequence of poses — the primitive every macro
+// builds with. Each keyframe carries the SAME token, which is what makes the resolver tween them
+// (pairNodes) and run the video's clock from the first pose rather than restarting it at every
+// keyframe (tokenOrigin). The layer is blank before the first pose and after the last, so the clip
+// has a real in and out point. Layer ord follows the usual convention — pushed later = in front.
+export function addAnimatedMediaLayer(
+  doc: FlashDoc, symId: string,
+  spec: { name?: string; assetId: string; kind?: 'image' | 'video'; props?: Record<string, unknown>; poses: Pose[]; endBlank?: boolean },
+): { doc: FlashDoc; layerId: string; nodeId: string } {
+  let layerId = '', nodeId = '';
+  if (!spec.poses.length) return { doc, layerId, nodeId };
+  const poses = [...spec.poses].sort((a, b) => a.frame - b.frame);
+  const token = uid('tok');
+  const blank = (frame: number): Keyframe => ({ id: uid('kf'), frame, kind: 'blank', tween: 'none', ease: null, label: null, script: null, soundAssetId: null, soundSync: 'event', nodes: [] });
+
+  const next = withSymbol(doc, symId, s => {
+    const keyframes: Keyframe[] = [];
+    if (poses[0]!.frame > 0) keyframes.push(blank(0));
+    for (const p of poses) {
+      const n = baseNode(spec.kind ?? 'video', Math.round(p.x ?? 0), Math.round(p.y ?? 0));
+      n.token = token;
+      n.assetId = spec.assetId;
+      n.ord = 0;
+      n.props = spec.props;
+      n.scaleX = p.scaleX ?? 1; n.scaleY = p.scaleY ?? 1;
+      n.rotation = p.rotation ?? 0; n.skewX = p.skewX ?? 0; n.skewY = p.skewY ?? 0;
+      n.rotX = p.rotX ?? 0; n.rotY = p.rotY ?? 0; n.z = p.z ?? 0;
+      n.alpha = p.alpha ?? 1;
+      if (p.hold?.length) n.hold = p.hold;
+      keyframes.push({ id: uid('kf'), frame: Math.max(0, Math.round(p.frame)), kind: 'key', tween: p.tween ?? 'none', ease: p.ease ?? null, label: null, script: null, soundAssetId: null, soundSync: 'event', nodes: [n] });
+      if (!nodeId) nodeId = n.id;
+    }
+    if (spec.endBlank) keyframes.push(blank(Math.round(poses[poses.length - 1]!.frame) + 1));
+    keyframes.sort((a, b) => a.frame - b.frame);
+    // A layer may hold only one keyframe per frame. Rounding a sampled path can land two poses on
+    // the same frame; the later one is the more advanced, so it wins.
+    for (let i = keyframes.length - 1; i > 0; i--) if (keyframes[i]!.frame === keyframes[i - 1]!.frame) keyframes.splice(i - 1, 1);
+    layerId = uid('lyr');
+    s.layers.push({ id: layerId, name: spec.name ?? `Layer ${s.layers.length + 1}`, ord: s.layers.length, kind: 'normal', parentId: null, locked: false, visible: true, outlined: false, keyframes });
+  });
+  return { doc: next, layerId, nodeId };
 }
 
 // Centre a w×h box in the document frame.

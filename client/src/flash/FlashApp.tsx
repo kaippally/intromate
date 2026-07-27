@@ -10,6 +10,8 @@ import { FlashStage } from './FlashStage';
 import { LibraryPanel } from './panels/LibraryPanel';
 import { TimelinePanel } from './panels/TimelinePanel';
 import { InspectorPanel } from './panels/InspectorPanel';
+import { MacroPanel } from './panels/MacroPanel';
+import { macroById, type MacroClip } from './macros';
 import { ShortcutManager } from './ShortcutManager';
 import { SettingsPanel } from './SettingsPanel';
 import { BuildStamp } from './BuildStamp';
@@ -17,21 +19,29 @@ import { useContextMenu, type MenuItem } from './ContextMenu';
 import { MediaPicker } from '../components/MediaPicker';
 import type { MediaItem } from '../types';
 
-type PanelId = 'library' | 'stage' | 'timeline' | 'inspector';
+type PanelId = 'library' | 'stage' | 'timeline' | 'inspector' | 'macro';
 const LAST_DOC = 'flash:lastDoc';
-const LAYOUT_KEY = 'flash:layout';
+// Bumped when a panel is added: a layout saved by an older build has no tile for the new panel and
+// would hide it forever, so the key change hands everyone the new default once.
+const LAYOUT_KEY = 'flash:layout:v2';
 
 const DEFAULT_LAYOUT: MosaicNode<PanelId> = {
   direction: 'row',
-  first: 'library',
+  first: { direction: 'column', first: 'library', second: 'macro', splitPercentage: 46 },
   second: {
     direction: 'row',
     first: { direction: 'column', first: 'stage', second: 'timeline', splitPercentage: 62 },
     second: 'inspector',
     splitPercentage: 78,
   },
-  splitPercentage: 18,
+  splitPercentage: 20,
 };
+
+// Every panel id present in a layout tree — used to tell whether a panel needs restoring.
+function layoutIds(n: MosaicNode<PanelId> | null): PanelId[] {
+  if (!n) return [];
+  return typeof n === 'string' ? [n] : [...layoutIds(n.first), ...layoutIds(n.second)];
+}
 
 export default function FlashApp() {
   const { present: doc, commit, undo, redo, reset, canUndo, canRedo } = useHistory<FlashDoc | null>(null);
@@ -234,6 +244,8 @@ export default function FlashApp() {
 
     'view.zoomIn': () => {}, 'view.zoomOut': () => {}, 'view.zoomFit': () => {},
     'view.shortcuts': () => setShowKeys(true),
+    // Restore the Macro panel if the user has closed it out of their layout.
+    'view.macros': () => setLayout(l => (layoutIds(l).includes('macro') ? l : { direction: 'row', first: 'macro', second: l, splitPercentage: 20 })),
   } : {};
 
   function nudge(dx: number, dy: number) {
@@ -261,6 +273,25 @@ export default function FlashApp() {
     if (isVideo) { const v = document.createElement('video'); v.onloadedmetadata = () => place(v.videoWidth, v.videoHeight); v.onerror = () => place(0, 0); v.src = item.url; }
     else { const img = new Image(); img.onload = () => place(img.naturalWidth, img.naturalHeight); img.onerror = () => place(0, 0); img.src = item.url; }
   }, [doc, editingSymbolId, frame, commit]);
+
+  // Run an animation macro into the CURRENT timeline. The assets are registered and the macro's
+  // layers are built inside a single commit, so the whole construction is one undo step. The macro
+  // itself is pure — everything it produces is ordinary layers and keyframes, editable afterwards.
+  const applyMacro = useCallback((macroId: string, clips: MacroClip[], params: Record<string, unknown>, startFrame: number) => {
+    const macro = macroById(macroId);
+    commit(d => {
+      if (!d) return d;
+      let next = d;
+      const assetIds: string[] = [];
+      for (const c of clips) {
+        const a = M.addAsset(next, { name: c.label, kind: c.kind, url: c.url });
+        next = a.doc;
+        assetIds.push(a.id);
+      }
+      return macro.build(next, editingSymbolId, startFrame, clips, params as never, assetIds);
+    });
+    setSelNodes([]); setSelKf(null); setFrame(startFrame);
+  }, [commit, editingSymbolId]);
 
   const placeInstance = useCallback((symId: string) => {
     if (!doc || !targetLayerId) return;
@@ -368,6 +399,10 @@ export default function FlashApp() {
         onPatchLayerName={(id, name) => mut(d => M.patchLayer(d, editingSymbolId, id, { name }), 'lname')}
         onAddLayer={() => mut(d => M.addLayer(d, editingSymbolId))}
         onDeleteLayer={id => { mut(d => M.deleteLayer(d, editingSymbolId, id)); if (selLayer === id) setSelLayer(null); }} />,
+    },
+    macro: {
+      title: 'Macros',
+      body: <MacroPanel doc={doc} frame={frame} onApply={applyMacro} />,
     },
     inspector: {
       title: 'Properties',
